@@ -1,9 +1,12 @@
 package xyz.philiprodriguez.projectrovercommunications;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import static xyz.philiprodriguez.projectrovercommunications.ProjectRoverServer.MAX_MESSAGE_SIZE;
 import static xyz.philiprodriguez.projectrovercommunications.ProjectRoverServer.START_SEQUENCE;
@@ -20,6 +23,8 @@ public class ProjectRoverClient {
 
     private final Thread inThread;
     private final Thread outThread;
+
+    private final BlockingQueue<ByteableMessage> sendQueue = new LinkedBlockingQueue<ByteableMessage>();
 
     public ProjectRoverClient(String address, int port) throws IOException {
         this.address = address;
@@ -92,7 +97,24 @@ public class ProjectRoverClient {
         outThread = new Thread(new Runnable() {
             @Override
             public void run() {
+                GlobalLogger.log(CLASS_IDENTIFIER, null, "Client outThread is starting!");
+                try {
+                    BufferedOutputStream socketOutput = new BufferedOutputStream(clientSocket.getOutputStream());
 
+                    while (!Thread.currentThread().isInterrupted()) {
+                        ByteableMessage nextMessage = sendQueue.take();
+                        GlobalLogger.log(CLASS_IDENTIFIER, null, "Sending message " + nextMessage.toString());
+                        socketOutput.write(nextMessage.getBytes());
+                        socketOutput.flush();
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } finally {
+                    GlobalLogger.log(CLASS_IDENTIFIER, null, "Client outThread is exiting!");
+                    killClientConnection();
+                }
             }
         });
 
@@ -106,6 +128,11 @@ public class ProjectRoverClient {
             inThread.interrupt();
         if (outThread != null)
             outThread.interrupt();
+        try {
+            clientSocket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public void waitForKillClientConnection() {
@@ -129,5 +156,9 @@ public class ProjectRoverClient {
 
     public synchronized void setOnFrameReceivedListener(OnFrameReceivedListener onFrameReceivedListener) {
         this.onFrameReceivedListener = onFrameReceivedListener;
+    }
+
+    public synchronized void doEnqueueMotorStateMessage(MotorStateMessage motorStateMessage) {
+        sendQueue.add(motorStateMessage);
     }
 }

@@ -1,8 +1,10 @@
 package xyz.philiprodriguez.projectroverserver;
 
 import android.Manifest;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -10,7 +12,6 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.os.Build;
 import android.os.Handler;
@@ -23,10 +24,23 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.widget.Button;
-import android.widget.Toast;
+import android.widget.ScrollView;
+import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import xyz.philiprodriguez.projectrovercommunications.GlobalLogger;
+import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
+import xyz.philiprodriguez.projectrovercommunications.OnMotorStateMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.ProjectRoverServer;
 import xyz.philiprodriguez.projectrovercommunications.ServerSettings;
 
@@ -36,8 +50,11 @@ public class MainActivity extends AppCompatActivity {
 
     private ProjectRoverServer projectRoverServer;
 
+    private final StringBuilder statusText = new StringBuilder();
+
+    private ScrollView scrStatusScrollView;
+    private TextView txtStatusMessage;
     private Button btnStopServer;
-    private Button btnTakePicture;
     private TextureView txvCameraPreview;
 
     // Camera shit only
@@ -53,6 +70,35 @@ public class MainActivity extends AppCompatActivity {
     Handler timerHandler;
     Runnable timerRunnable;
 
+    // Bluetooth shit only
+    BluetoothDevice bluetoothDevice;
+    BluetoothSocket bluetoothSocket;
+    Runnable bluetoothConnectRunnable;
+    Handler bluetoothConnectionHandler;
+    HandlerThread bluetoothConnectionHandlerThread;
+    final BlockingQueue<byte[]> bluetoothSendQueue = new LinkedBlockingQueue<>();
+    Thread bluetoothOutThread;
+
+    private void setStatusAndLog(String message) {
+        GlobalLogger.log(CLASS_IDENTIFIER, null, "Status: " + message);
+        statusText.append(new Date().toString());
+        statusText.append(": ");
+        statusText.append(message);
+        statusText.append(System.lineSeparator());
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                txtStatusMessage.setText(statusText);
+                scrStatusScrollView.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        scrStatusScrollView.fullScroll(View.FOCUS_DOWN);
+                    }
+                });
+            }
+        });
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -61,20 +107,85 @@ public class MainActivity extends AppCompatActivity {
         initComponents();
     }
 
+    public static final byte[] BLUETOOTH_START_SEQUENCE = new byte[]{'a', '8', 'f', 'e', 'J', '2', '9', 'p'};
+    private void enqueueBluetoothMessage(byte[] everythingExceptStartSequence) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            baos.write(BLUETOOTH_START_SEQUENCE);
+            baos.write(everythingExceptStartSequence);
+            bluetoothSendQueue.add(baos.toByteArray());
+            baos.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+            setStatusAndLog("Unexpected issue enqueueing Bluetoth message!");
+        }
+    }
+
+    private void initComponents() {
+        scrStatusScrollView = findViewById(R.id.scrStatusScrollView_Main);
+        txtStatusMessage = findViewById(R.id.txtStatusMessage_Main);
+        btnStopServer = findViewById(R.id.btnStopServer_Main);
+        txvCameraPreview = findViewById(R.id.txvCameraPreview_Main);
+
+        btnStopServer.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (projectRoverServer == null || projectRoverServer.isKilled()) {
+                    startServer();
+                } else {
+                    stopServer();
+                }
+            }
+        });
+
+        timerHandler = new Handler();
+        timerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (projectRoverServer != null)
+                    projectRoverServer.doEnqueueImageAndRecycleBitmap(txvCameraPreview.getBitmap());
+                timerHandler.postDelayed(timerRunnable, 50);
+            }
+        };
+        timerHandler.postDelayed(timerRunnable, 50);
+    }
+
+    private void startServer() {
+        setStatusAndLog("Starting server...");
+        ServerSettings serverSettings = new ServerSettings();
+        projectRoverServer = new ProjectRoverServer(7345, serverSettings);
+        projectRoverServer.setOnMotorStateMessageReceivedListener(new OnMotorStateMessageReceivedListener() {
+            @Override
+            public void OnMotorStateMessageReceived(MotorStateMessage message) {
+                setStatusAndLog("Got motor message: " + message.toString());
+                enqueueBluetoothMessage(new byte[]{'m', (byte)(message.getLeftForward()), (byte)(message.getLeftBackward()), (byte)(message.getRightForward()), (byte)(message.getRightBackward())});
+            }
+        });
+        setStatusAndLog("Server started with settings:" + System.lineSeparator() + serverSettings.toString());
+        btnStopServer.setText("Stop Server");
+    }
+
+    private void stopServer() {
+        setStatusAndLog("Stopping server...");
+        projectRoverServer.killServer();
+        setStatusAndLog("Server stopped!");
+        btnStopServer.setText("Start Server");
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
 
         openCameraBackgroundHandler();
         if (txvCameraPreview.isAvailable()) {
-            setupCamera();
-            openCamera();
+            if (setupCamera())
+                openCamera();
         } else {
             txvCameraPreview.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
                 @Override
                 public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-                    setupCamera();
-                    openCamera();
+                    if (setupCamera())
+                        openCamera();
                 }
 
                 @Override
@@ -93,19 +204,228 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
         }
+
+        openBluetoothHandler();
+        if (getBluetoothDevice()) {
+            connectBluetoothDevice();
+        }
+
+        startServer();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-
+        closeCamera();
+        closeCameraBackgroundHandler();
+        closeBluetooth();
+        closeBluetoothHandler();
+        if (projectRoverServer != null) {
+            stopServer();
+        }
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        closeCamera();
-        closeCameraBackgroundHandler();
+    }
+
+    private void openBluetoothHandler() {
+        bluetoothConnectionHandlerThread = new HandlerThread("Bluetooth Connection Handler Thread");
+        bluetoothConnectionHandlerThread.start();
+        bluetoothConnectionHandler = new Handler(bluetoothConnectionHandlerThread.getLooper());
+    }
+
+    private void closeBluetoothHandler() {
+        if (bluetoothConnectionHandler != null) {
+            bluetoothConnectionHandlerThread.quitSafely();
+            bluetoothConnectionHandlerThread = null;
+            bluetoothConnectionHandler = null;
+        }
+    }
+
+    private boolean getBluetoothDevice() {
+        setStatusAndLog("Getting Bluetooth device..");
+        BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        if (bluetoothAdapter != null) {
+            if (bluetoothAdapter.isEnabled()) {
+                setStatusAndLog("Bluetooth is already enabled on the device...");
+                Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
+                for (BluetoothDevice bluetoothDevice : pairedDevices) {
+                    String deviceName = bluetoothDevice.getName();
+                    String deviceMAC = bluetoothDevice.getAddress();
+
+                    // TODO: make this dynamic
+                    if (deviceMAC.equals("20:16:08:10:48:03")) {
+                        setStatusAndLog("Found device " + deviceName + " with MAC " + deviceMAC);
+                        this.bluetoothDevice = bluetoothDevice;
+                        break;
+                    }
+                }
+                if (this.bluetoothDevice != null) {
+                    return true;
+                } else {
+                    setStatusAndLog("Failed to find suitable Bluetooth device! Make sure it is paired!");
+                    return false;
+                }
+            } else {
+                setStatusAndLog("Bluetooth is not enabled! Please enable bluetooth and restart the application...");
+                return false;
+            }
+        } else {
+            setStatusAndLog("Bluetooth is not supported on this device!");
+            return false;
+        }
+    }
+
+    private void connectBluetoothDevice() {
+        setStatusAndLog("Attempting to connect to Bluetooth device...");
+        try {
+            bluetoothSocket = bluetoothDevice.createRfcommSocketToServiceRecord(UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
+            bluetoothConnectRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        bluetoothSocket.connect();
+                        openBluetoothOutThread();
+                        setStatusAndLog("Bluetooth socket connected!");
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        setStatusAndLog("Failed to connect the Bluetooth socket! Retrying...");
+                        bluetoothConnectionHandler.post(bluetoothConnectRunnable);
+                    }
+                }
+            };
+            bluetoothConnectionHandler.post(bluetoothConnectRunnable);
+        } catch (IOException e) {
+            e.printStackTrace();
+            setStatusAndLog("Failed to create socket for Bluetooth device!");
+        }
+    }
+
+    private void openBluetoothOutThread() {
+        setStatusAndLog("Opening Bluetooth send thread...");
+        bluetoothOutThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    setStatusAndLog("Bluetooth out thread started!");
+                    while (!Thread.currentThread().isInterrupted()) {
+                        try {
+                            byte[] bytesToSend = bluetoothSendQueue.take();
+                            setStatusAndLog("Writing out bytes: " + Arrays.toString(bytesToSend));
+                            bluetoothSocket.getOutputStream().write(bytesToSend);
+                            bluetoothSocket.getOutputStream().flush();
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                            setStatusAndLog("Bluetooth IO exception! " + e.getMessage());
+                            break;
+                        }
+                    }
+                    setStatusAndLog("Bluetooth out thread closing!");
+                } finally {
+                    // Try to reconnect Bluetooth!
+                    setStatusAndLog("Attempting to re-establish Bluetooth connection!");
+                    closeBluetooth();
+                    closeBluetoothHandler();
+                    openBluetoothHandler();
+                    if (getBluetoothDevice()) {
+                        connectBluetoothDevice();
+                    }
+                }
+            }
+        });
+        bluetoothOutThread.start();
+    }
+
+    private void closeBluetooth() {
+        setStatusAndLog("Closing Bluetooth socket...");
+        if (bluetoothSocket != null) {
+            try {
+                bluetoothSocket.close();
+                this.bluetoothDevice = null;
+                setStatusAndLog("Bluetooth socket closed!");
+            } catch (IOException e) {
+                setStatusAndLog("Failed to close Bluetooth socket!");
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void openCameraBackgroundHandler() {
+        setStatusAndLog("Opening camera background handler...");
+        cameraHandlerThread = new HandlerThread("Camera Handler Thread");
+        cameraHandlerThread.start();
+        cameraBackgroundHandler = new Handler(cameraHandlerThread.getLooper());
+    }
+
+    private boolean setupCamera() {
+        setStatusAndLog("Setting up camera...");
+
+        cameraStateCallback = new CameraDevice.StateCallback() {
+            @Override
+            public void onOpened(@NonNull CameraDevice camera) {
+                setStatusAndLog("Camera device populated!");
+                cameraDevice = camera;
+                createCaptureSession();
+            }
+
+            @Override
+            public void onDisconnected(@NonNull CameraDevice camera) {
+                setStatusAndLog("Camera disconnected! Closing camera...");
+                closeCamera();
+            }
+
+            @Override
+            public void onError(@NonNull CameraDevice camera, int error) {
+                setStatusAndLog("Camera error! Closing camera...");
+                closeCamera();
+            }
+        };
+
+
+        cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
+        try {
+            if (cameraManager == null) {
+                setStatusAndLog("Failed to get camera manager");
+                return false;
+            }
+            String[] allCameraIds = cameraManager.getCameraIdList();
+            CameraCharacteristics cameraCharacteristics = null;
+            for (String cameraId : allCameraIds) {
+                cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId);
+
+                if (cameraCharacteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK) {
+                    cameraRearId = cameraId;
+                    break;
+                }
+            }
+            if (cameraRearId == null) {
+                setStatusAndLog("No rear facing camera was found!");
+                return false;
+            } else {
+                setStatusAndLog("Got rear camera ID of " + cameraRearId);
+            }
+
+            // We have a camera with some camera characteristics!
+            StreamConfigurationMap streamConfigurationMap = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            for (Size size : streamConfigurationMap.getOutputSizes(SurfaceTexture.class)) {
+                // Don't accept a size above 720p
+                if (size.getWidth() * size.getHeight() <= 1280*720) {
+                    setStatusAndLog("Using camera size of " + size.toString());
+                    cameraSize = size;
+                    break;
+                }
+            }
+            setStatusAndLog("Camera setup complete!");
+            return true;
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+            setStatusAndLog("Failed to access camera!");
+            return false;
+        }
     }
 
     private void closeCamera() {
@@ -128,138 +448,32 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void initComponents() {
-        btnStopServer = findViewById(R.id.btnStopServer_Main);
-        btnTakePicture = findViewById(R.id.btnTakePicture_Main);
-        txvCameraPreview = findViewById(R.id.txvCameraPreview_Main);
-
-        btnStopServer.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (projectRoverServer == null || projectRoverServer.isKilled()) {
-                    ServerSettings serverSettings = new ServerSettings();
-                    projectRoverServer = new ProjectRoverServer(7345, serverSettings);
-                    btnStopServer.setText("Stop Server");
-                } else {
-                    projectRoverServer.killServer();
-                    projectRoverServer.waitForKillServer();
-                    btnStopServer.setText("Start Server");
-                }
-            }
-        });
-
-        btnTakePicture.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Toast.makeText(MainActivity.this, "This button does nothing!", Toast.LENGTH_SHORT).show();
-                //projectRoverServer.doEnqueueImage(txvCameraPreview.getBitmap());
-            }
-        });
-
-        timerHandler = new Handler();
-        timerRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (projectRoverServer != null)
-                    projectRoverServer.doEnqueueImageAndRecycleBitmap(txvCameraPreview.getBitmap());
-                timerHandler.postDelayed(timerRunnable, 50);
-            }
-        };
-        timerHandler.postDelayed(timerRunnable, 50);
-    }
-
-    private void setupCamera() {
-        System.out.println("Setting up camera...");
-
-        cameraStateCallback = new CameraDevice.StateCallback() {
-            @Override
-            public void onOpened(@NonNull CameraDevice camera) {
-                System.out.println("Camera device populated!");
-                cameraDevice = camera;
-                createCaptureSession();
-            }
-
-            @Override
-            public void onDisconnected(@NonNull CameraDevice camera) {
-                System.out.println("Camera disconnected!");
-                cameraDevice.close();
-                cameraDevice = null;
-            }
-
-            @Override
-            public void onError(@NonNull CameraDevice camera, int error) {
-                System.out.println("Camera error!");
-                cameraDevice.close();
-                cameraDevice = null;
-            }
-        };
-
-
-        cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
-        try {
-            String[] allCameraIds = cameraManager.getCameraIdList();
-            CameraCharacteristics cameraCharacteristics = null;
-            for (String cameraId : allCameraIds) {
-                cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId);
-
-                if (cameraCharacteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK) {
-                    cameraRearId = cameraId;
-                    break;
-                }
-            }
-            if (cameraRearId == null) {
-                Toast.makeText(this, "No rear facing camera was found!", Toast.LENGTH_LONG).show();
-                finish();
-            } else {
-                System.out.println("Got rear camera ID of " + cameraRearId);
-            }
-
-            // We have a camera with some camera characteristics!
-            StreamConfigurationMap streamConfigurationMap = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-            for (Size size : streamConfigurationMap.getOutputSizes(SurfaceTexture.class)) {
-                // Don't accept a size above 720p
-                if (size.getWidth() * size.getHeight() <= 1280*720) {
-                    Toast.makeText(this, "Using size " + size.toString(), Toast.LENGTH_SHORT).show();
-                    cameraSize = size;
-                    break;
-                }
-            }
-
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "Failed to access camera!", Toast.LENGTH_LONG).show();
-            finish();
-        }
-    }
-
-    private void openCamera() {
-        System.out.println("Opening camera...");
+    private boolean openCamera() {
+        setStatusAndLog("Opening camera...");
         if (Build.VERSION.SDK_INT >= 23) {
             if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                setStatusAndLog("Lacking required camera permissions! Requesting...");
                 requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
             } else {
-                try {
-                    cameraManager.openCamera(cameraRearId, cameraStateCallback, cameraBackgroundHandler);
-                } catch (CameraAccessException e) {
-                    e.printStackTrace();
-                    Toast.makeText(this, "Failed to access camera for opening!", Toast.LENGTH_LONG).show();
-                    finish();
-                }
+                setStatusAndLog("Camera permission is granted!");
             }
         } else {
-            Toast.makeText(this, "Android SDK level is too low to open camera!", Toast.LENGTH_LONG).show();
-            finish();
+            setStatusAndLog("Android SDK level is too low to request permission to open camera!");
         }
-    }
 
-    private void openCameraBackgroundHandler() {
-        System.out.println("Opening camera background handler");
-        cameraHandlerThread = new HandlerThread("Camera Handler Thread");
-        cameraHandlerThread.start();
-        cameraBackgroundHandler = new Handler(cameraHandlerThread.getLooper());
+        try {
+            cameraManager.openCamera(cameraRearId, cameraStateCallback, cameraBackgroundHandler);
+            setStatusAndLog("Camera successfully opened!");
+            return true;
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+            setStatusAndLog("Failed to access camera for opening!");
+            return false;
+        }
     }
 
     private void createCaptureSession() {
+        setStatusAndLog("Creating camera capture session...");
         SurfaceTexture surfaceTexture = txvCameraPreview.getSurfaceTexture();
         surfaceTexture.setDefaultBufferSize(cameraSize.getWidth(), cameraSize.getHeight());
         final Surface surface = new Surface(surfaceTexture);
@@ -272,22 +486,21 @@ public class MainActivity extends AppCompatActivity {
                         CaptureRequest.Builder captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
                         captureRequestBuilder.addTarget(surface);
                         session.setRepeatingRequest(captureRequestBuilder.build(), null, cameraBackgroundHandler);
+                        setStatusAndLog("Capture session created!");
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
-                        Toast.makeText(MainActivity.this, "Failed to access camera for capture request!", Toast.LENGTH_LONG).show();
-                        finish();
+                        setStatusAndLog("Failed to access camera for capture request!");
                     }
                 }
 
                 @Override
                 public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-                    System.out.println("Configure failed!!!");
+                    setStatusAndLog("Configure failed!");
                 }
             }, cameraBackgroundHandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
-            Toast.makeText(this, "Failed to access camera for capture session!", Toast.LENGTH_LONG).show();
-            finish();
+            setStatusAndLog("Failed to access camera for capture session!");
         }
     }
 }

@@ -38,7 +38,7 @@
         android:ems="12"
         android:hint="Host (IP or Domain)"
         android:inputType="textPersonName"
-        android:text="192.168.1.157"
+        android:text="192.168.1.130"
         app:layout_constraintEnd_toEndOf="@+id/textView"
         app:layout_constraintStart_toStartOf="@+id/textView"
         app:layout_constraintTop_toBottomOf="@+id/textView" />
@@ -51,7 +51,6 @@
         android:ems="12"
         android:hint="Port"
         android:inputType="number"
-        android:numeric="integer"
         android:text="7345"
         app:layout_constraintEnd_toEndOf="@+id/edtHost_Main"
         app:layout_constraintStart_toStartOf="@+id/edtHost_Main"

@@ -33,6 +33,8 @@ public class ProjectRoverServer {
     private final AtomicBoolean isClientConnected;
     private final BlockingQueue<ByteableMessage> sendQueue = new LinkedBlockingQueue<ByteableMessage>();
 
+    private volatile OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener;
+
     public ProjectRoverServer(final int port, ServerSettings serverSettings) {
         this.port = port;
         this.serverSettings = serverSettings;
@@ -61,12 +63,10 @@ public class ProjectRoverServer {
                             public void run() {
                                 GlobalLogger.log(CLASS_IDENTIFIER, null, "Server inThread is starting!");
                                 try {
-                                    BufferedInputStream socketInput = new BufferedInputStream(getClientSocket().getInputStream());
+                                    BufferedInputStream socketInput = new BufferedInputStream(clientSocket.getInputStream());
                                     outer: while (!Thread.currentThread().isInterrupted()) {
-                                        GlobalLogger.log(CLASS_IDENTIFIER, "inThread", "Awaiting start sequence...");
                                         for (int i = 0; i < START_SEQUENCE.length; i++) {
                                             if (socketInput.read() != START_SEQUENCE[i]) {
-                                                GlobalLogger.log(CLASS_IDENTIFIER, "e", "Start sequence failure at position " + i + "!");
                                                 continue outer;
                                             }
                                         }
@@ -90,17 +90,19 @@ public class ProjectRoverServer {
                                         GlobalLogger.log(CLASS_IDENTIFIER, "inThread", "Message size of " + messageSize);
 
                                         byte[] messageBytes = new byte[messageSize];
-                                        for (int i = 0; i < messageSize; i++) {
+                                        for (int i = 0; i < messageBytes.length; i++) {
                                             int nextByte = socketInput.read();
                                             if (nextByte < 0) {
                                                 GlobalLogger.log(CLASS_IDENTIFIER, "e", "Invalid read while reading message bytes: " + nextByte);
                                                 continue outer;
                                             }
-                                            messageBytes[i] = (byte) socketInput.read();
+                                            messageBytes[i] = (byte) nextByte;
                                         }
 
-                                        if (startCode == new JPEGFrameMessage().getStartCode()) {
-                                            JPEGFrameMessage message = new JPEGFrameMessage().fromBytes(messageBytes);
+                                        GlobalLogger.log(CLASS_IDENTIFIER, "inThread", "Message bytes read...");
+                                        if (startCode == new MotorStateMessage().getStartCode()) {
+                                            MotorStateMessage message = new MotorStateMessage().fromBytes(messageBytes);
+                                            onMotorStateMessageReceivedListener.OnMotorStateMessageReceived(message);
                                         } else {
                                             GlobalLogger.log(CLASS_IDENTIFIER, "e", "Read illegal start code of " + startCode);
                                         }
@@ -165,17 +167,29 @@ public class ProjectRoverServer {
             getInThread().interrupt();
         if (getOutThread() != null)
             getOutThread().interrupt();
+        try {
+            clientSocket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public void waitForKillClientConnection() {
+        GlobalLogger.log(CLASS_IDENTIFIER, null, "waitForKillClientConnection called!");
         try {
-            if (getInThread() != null)
-                getInThread().join();
-            if (getOutThread() != null)
-                getOutThread().join();
+            GlobalLogger.log(CLASS_IDENTIFIER, null, "Getting inThread");
+            Thread inThread = getInThread();
+            GlobalLogger.log(CLASS_IDENTIFIER, null, "Getting outThread");
+            Thread outThread = getOutThread();
+            GlobalLogger.log(CLASS_IDENTIFIER, null, "Joining inThread");
+            if (inThread != null)
+                inThread.join();
+            GlobalLogger.log(CLASS_IDENTIFIER, null, "Joining outThread");
+            if (outThread != null)
+                outThread.join();
         } catch (InterruptedException e) {
             e.printStackTrace();
-            throw new IllegalStateException("Failed to wait for kill client connection!", e);
+            GlobalLogger.log(CLASS_IDENTIFIER, null, "waitForKillClientConnection interrupted!");
         } finally {
             GlobalLogger.log(CLASS_IDENTIFIER, null, "waitForKillClientConnection completed!");
         }
@@ -239,5 +253,9 @@ public class ProjectRoverServer {
             sendQueue.add(jpegFrameMessage);
             bitmap.recycle();
         }
+    }
+
+    public synchronized void setOnMotorStateMessageReceivedListener(OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener) {
+        this.onMotorStateMessageReceivedListener = onMotorStateMessageReceivedListener;
     }
 }

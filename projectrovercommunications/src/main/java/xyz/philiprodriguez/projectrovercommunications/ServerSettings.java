@@ -1,5 +1,7 @@
 package xyz.philiprodriguez.projectrovercommunications;
 
+import android.support.annotation.NonNull;
+
 public class ServerSettings {
     private volatile int headlightBrightness;
     private volatile int jpegQuality;
@@ -24,5 +26,16 @@ public class ServerSettings {
 
     public synchronized int getJpegQuality() {
         return jpegQuality;
+    }
+
+    @NonNull
+    public String toString() {
+        StringBuffer sb = new StringBuffer();
+        sb.append("headlightBrightness = ");
+        sb.append(getHeadlightBrightness());
+        sb.append(System.lineSeparator());
+        sb.append("jpegQuality = ");
+        sb.append(getJpegQuality());
+        return sb.toString();
     }
 }
