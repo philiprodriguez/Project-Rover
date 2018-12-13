@@ -40,6 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import xyz.philiprodriguez.projectrovercommunications.GlobalLogger;
 import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
+import xyz.philiprodriguez.projectrovercommunications.OnLoggableEventListener;
 import xyz.philiprodriguez.projectrovercommunications.OnMotorStateMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.ProjectRoverServer;
 import xyz.philiprodriguez.projectrovercommunications.ServerSettings;
@@ -117,7 +118,7 @@ public class MainActivity extends AppCompatActivity {
             baos.close();
         } catch (IOException e) {
             e.printStackTrace();
-            setStatusAndLog("Unexpected issue enqueueing Bluetoth message!");
+            setStatusAndLog("Unexpected issue enqueueing Bluetooth message!");
         }
     }
 
@@ -142,12 +143,13 @@ public class MainActivity extends AppCompatActivity {
         timerRunnable = new Runnable() {
             @Override
             public void run() {
-                if (projectRoverServer != null)
-                    projectRoverServer.doEnqueueImageAndRecycleBitmap(txvCameraPreview.getBitmap());
-                timerHandler.postDelayed(timerRunnable, 50);
+                if (projectRoverServer != null) {
+                    projectRoverServer.doEnqueueImageAndRecycleBitmap(txvCameraPreview.getBitmap(180, 320));
+                }
+                timerHandler.postDelayed(timerRunnable, 20);
             }
         };
-        timerHandler.postDelayed(timerRunnable, 50);
+        timerHandler.postDelayed(timerRunnable, 20);
     }
 
     private void startServer() {
@@ -157,8 +159,14 @@ public class MainActivity extends AppCompatActivity {
         projectRoverServer.setOnMotorStateMessageReceivedListener(new OnMotorStateMessageReceivedListener() {
             @Override
             public void OnMotorStateMessageReceived(MotorStateMessage message) {
-                setStatusAndLog("Got motor message: " + message.toString());
+                //setStatusAndLog("Got motor message: " + message.toString());
                 enqueueBluetoothMessage(new byte[]{'m', (byte)(message.getLeftForward()), (byte)(message.getLeftBackward()), (byte)(message.getRightForward()), (byte)(message.getRightBackward())});
+            }
+        });
+        projectRoverServer.setOnLoggableEventListener(new OnLoggableEventListener() {
+            @Override
+            public void OnLoggableEvent(String message) {
+                setStatusAndLog(message);
             }
         });
         setStatusAndLog("Server started with settings:" + System.lineSeparator() + serverSettings.toString());
@@ -313,7 +321,7 @@ public class MainActivity extends AppCompatActivity {
                     while (!Thread.currentThread().isInterrupted()) {
                         try {
                             byte[] bytesToSend = bluetoothSendQueue.take();
-                            setStatusAndLog("Writing out bytes: " + Arrays.toString(bytesToSend));
+                            //setStatusAndLog("Writing out bytes: " + Arrays.toString(bytesToSend));
                             bluetoothSocket.getOutputStream().write(bytesToSend);
                             bluetoothSocket.getOutputStream().flush();
                         } catch (InterruptedException e) {
@@ -484,6 +492,8 @@ public class MainActivity extends AppCompatActivity {
                 public void onConfigured(@NonNull CameraCaptureSession session) {
                     try {
                         CaptureRequest.Builder captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+//                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+//                        captureRequestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f);
                         captureRequestBuilder.addTarget(surface);
                         session.setRepeatingRequest(captureRequestBuilder.build(), null, cameraBackgroundHandler);
                         setStatusAndLog("Capture session created!");

@@ -2,10 +2,9 @@ package xyz.philiprodriguez.projectrover;
 
 import android.graphics.Bitmap;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.support.v7.app.AppCompatActivity;
-import android.view.MotionEvent;
-import android.view.View;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.Toast;
@@ -13,8 +12,8 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import xyz.philiprodriguez.projectrovercommunications.GlobalLogger;
 import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
+import xyz.philiprodriguez.projectrovercommunications.OnClientConnectionKilledListener;
 import xyz.philiprodriguez.projectrovercommunications.OnFrameReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.ProjectRoverClient;
 
@@ -29,7 +28,9 @@ public class ConnectedActivity extends AppCompatActivity {
     private volatile String host;
 
     private volatile ProjectRoverClient projectRoverClient;
-    private volatile Thread clientThread;
+    private volatile Handler clientConnectorHandler;
+    private volatile HandlerThread clientConnectorHandlerThread;
+    private volatile Runnable clientConnectorRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,68 +43,116 @@ public class ConnectedActivity extends AppCompatActivity {
         initComponents();
     }
 
+    private void connect() {
+        if (projectRoverClient != null && !projectRoverClient.isKilled()) {
+            return;
+        }
+
+        clientConnectorHandler.post(clientConnectorRunnable);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
 
-        // Open client connection
-        clientThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                if (!Thread.currentThread().isInterrupted()) {
-                    try {
-                        projectRoverClient = new ProjectRoverClient(host, port);
-                        projectRoverClient.setOnFrameReceivedListener(new OnFrameReceivedListener() {
-                            @Override
-                            public void OnFrameReceived(final Bitmap bitmap) {
-                                runOnUiThread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        if (imgCameraView != null) {
-                                            imgCameraView.setImageBitmap(bitmap);
-                                        }
-                                    }
-                                });
-                            }
-                        });
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                Toast.makeText(ConnectedActivity.this, "Connected to robot!", Toast.LENGTH_SHORT).show();
-                            }
-                        });
-                    } catch (IOException e) {
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                Toast.makeText(ConnectedActivity.this, "Failed to connect to robot server! Retrying in 10 seconds...", Toast.LENGTH_SHORT).show();
-                            }
-                        });
-                    }
-                    try {
-                        Thread.sleep(10000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        });
-        clientThread.start();
+        openClientConnectionHandler();
+        connect();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
 
+        closeClientConnectorHandler();
+
         // Kill client connection
         if (projectRoverClient != null) {
             projectRoverClient.killClientConnection();
             projectRoverClient.waitForKillClientConnection();
         }
+
+    }
+
+    private void openClientConnectionHandler() {
+        clientConnectorHandlerThread = new HandlerThread("Client Connector Handler Thread");
+        clientConnectorHandlerThread.start();
+        clientConnectorHandler = new Handler(clientConnectorHandlerThread.getLooper());
+
+        clientConnectorRunnable = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    projectRoverClient = new ProjectRoverClient(host, port);
+                    projectRoverClient.setOnFrameReceivedListener(new OnFrameReceivedListener() {
+                        @Override
+                        public void OnFrameReceived(final Bitmap bitmap) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (imgCameraView != null) {
+                                        imgCameraView.setImageBitmap(bitmap);
+                                    }
+                                }
+                            });
+                        }
+                    });
+                    projectRoverClient.setOnClientConnectionKilledListener(new OnClientConnectionKilledListener() {
+                        @Override
+                        public void OnClientConnectionKilled() {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(ConnectedActivity.this, "Connection terminated...", Toast.LENGTH_SHORT).show();
+                                    if (clientConnectorHandler != null) {
+                                        clientConnectorHandler.postDelayed(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                connect();
+                                            }
+                                        }, 10000);
+                                    }
+                                }
+                            });
+                        }
+                    });
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(ConnectedActivity.this, "Connected to robot!", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } catch (IOException e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(ConnectedActivity.this, "Failed to connect to robot server! Retrying in 10 seconds...", Toast.LENGTH_SHORT).show();
+
+                            if (clientConnectorHandler != null) {
+                                clientConnectorHandler.postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        connect();
+                                    }
+                                }, 10000);
+                            }
+                        }
+                    });
+                }
+            }
+        };
+    }
+
+    private void closeClientConnectorHandler() {
+        if (clientConnectorHandlerThread != null) {
+            clientConnectorHandlerThread.quitSafely();
+            clientConnectorHandlerThread = null;
+            clientConnectorHandler = null;
+        }
     }
 
     private AtomicInteger lastUpDown = new AtomicInteger(50);
     private AtomicInteger lastLeftRight = new AtomicInteger(50);
+    private AtomicInteger numTracking = new AtomicInteger(0);
     private void initComponents() {
         imgCameraView = findViewById(R.id.imgCameraView_Connected);
         sebUpDown = findViewById(R.id.sebUpDown_Connected);
@@ -120,12 +169,17 @@ public class ConnectedActivity extends AppCompatActivity {
 
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {
-
+                numTracking.incrementAndGet();
             }
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
                 sebUpDown.setProgress(50);
+                int amountTracking = numTracking.decrementAndGet();
+
+                if (amountTracking <= 0) {
+                    sendStopUpdate();
+                }
             }
         });
 
@@ -140,12 +194,17 @@ public class ConnectedActivity extends AppCompatActivity {
 
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {
-
+                numTracking.incrementAndGet();
             }
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
                 sebLeftRight.setProgress(50);
+                int amountTracking = numTracking.decrementAndGet();
+
+                if (amountTracking <= 0) {
+                    sendStopUpdate();
+                }
             }
         });
     }
@@ -184,7 +243,6 @@ public class ConnectedActivity extends AppCompatActivity {
             lb = 255;
             rb = 255;
 
-            // Apply left right skew
             // Apply left right skew
             if (goingLeft) {
                 lb -= (int)(magnitudeLeftRight*255.0);

@@ -22,7 +22,7 @@ public class ProjectRoverServer {
 
     private final ServerSettings serverSettings;
 
-    private volatile boolean isKilled;
+    private final AtomicBoolean isKilled;
 
     private volatile ServerSocket serverSocket;
     private final Thread connectorThread;
@@ -34,11 +34,12 @@ public class ProjectRoverServer {
     private final BlockingQueue<ByteableMessage> sendQueue = new LinkedBlockingQueue<ByteableMessage>();
 
     private volatile OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener;
+    private volatile OnLoggableEventListener onLoggableEventListener;
 
     public ProjectRoverServer(final int port, ServerSettings serverSettings) {
         this.port = port;
         this.serverSettings = serverSettings;
-        this.isKilled = false;
+        this.isKilled = new AtomicBoolean(false);
         this.isClientConnected = new AtomicBoolean(false);
 
         connectorThread = new Thread(new Runnable() {
@@ -66,7 +67,12 @@ public class ProjectRoverServer {
                                     BufferedInputStream socketInput = new BufferedInputStream(clientSocket.getInputStream());
                                     outer: while (!Thread.currentThread().isInterrupted()) {
                                         for (int i = 0; i < START_SEQUENCE.length; i++) {
-                                            if (socketInput.read() != START_SEQUENCE[i]) {
+                                            int nextByte = socketInput.read();
+                                            if (nextByte < 0) {
+                                                // The stream is closed!
+                                                break outer;
+                                            }
+                                            if (nextByte != START_SEQUENCE[i]) {
                                                 continue outer;
                                             }
                                         }
@@ -93,8 +99,8 @@ public class ProjectRoverServer {
                                         for (int i = 0; i < messageBytes.length; i++) {
                                             int nextByte = socketInput.read();
                                             if (nextByte < 0) {
-                                                GlobalLogger.log(CLASS_IDENTIFIER, "e", "Invalid read while reading message bytes: " + nextByte);
-                                                continue outer;
+                                                // The stream is closed!
+                                                break outer;
                                             }
                                             messageBytes[i] = (byte) nextByte;
                                         }
@@ -205,7 +211,7 @@ public class ProjectRoverServer {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        isKilled = true;
+        isKilled.set(true);
     }
     public void waitForKillServer() {
         try {
@@ -220,7 +226,7 @@ public class ProjectRoverServer {
     }
 
     public synchronized boolean isKilled() {
-        return isKilled;
+        return isKilled.get();
     }
 
     private synchronized void setClientSocket(Socket clientSocket) {
@@ -257,5 +263,9 @@ public class ProjectRoverServer {
 
     public synchronized void setOnMotorStateMessageReceivedListener(OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener) {
         this.onMotorStateMessageReceivedListener = onMotorStateMessageReceivedListener;
+    }
+
+    public synchronized void setOnLoggableEventListener(OnLoggableEventListener onLoggableEventListener) {
+        this.onLoggableEventListener = onLoggableEventListener;
     }
 }
