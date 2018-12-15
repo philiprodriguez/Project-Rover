@@ -35,8 +35,9 @@ public class ProjectRoverServer {
 
     private volatile OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener;
     private volatile OnLoggableEventListener onLoggableEventListener;
+    private volatile OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener;
 
-    public ProjectRoverServer(final int port, ServerSettings serverSettings) {
+    public ProjectRoverServer(final int port, final ServerSettings serverSettings) {
         this.port = port;
         this.serverSettings = serverSettings;
         this.isKilled = new AtomicBoolean(false);
@@ -109,6 +110,10 @@ public class ProjectRoverServer {
                                         if (startCode == new MotorStateMessage().getStartCode()) {
                                             MotorStateMessage message = new MotorStateMessage().fromBytes(messageBytes);
                                             onMotorStateMessageReceivedListener.OnMotorStateMessageReceived(message);
+                                        } else if (startCode == new ServerSettingsMessage().getStartCode()) {
+                                            ServerSettingsMessage message = new ServerSettingsMessage().fromBytes(messageBytes);
+                                            serverSettings.setFromServerSettings(message.getServerSettings());
+                                            onServerSettingsMessageReceivedListener.OnServerSettingsMessageReceived(message);
                                         } else {
                                             GlobalLogger.log(CLASS_IDENTIFIER, "e", "Read illegal start code of " + startCode);
                                         }
@@ -149,6 +154,10 @@ public class ProjectRoverServer {
                         getInThread().start();
                         getOutThread().start();
                         isClientConnected.set(true);
+
+                        // Send out an initial ServerSettings message to let the client know where we are at!
+                        sendQueue.add(new ServerSettingsMessage(System.currentTimeMillis(), serverSettings));
+
                         waitForKillClientConnection();
                     }
                 } catch (SocketException e) {
@@ -261,11 +270,23 @@ public class ProjectRoverServer {
         }
     }
 
+    public synchronized void doEnqueueServerStateMessage(ServerStateMessage serverStateMessage) {
+        sendQueue.add(serverStateMessage);
+    }
+
     public synchronized void setOnMotorStateMessageReceivedListener(OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener) {
         this.onMotorStateMessageReceivedListener = onMotorStateMessageReceivedListener;
     }
 
     public synchronized void setOnLoggableEventListener(OnLoggableEventListener onLoggableEventListener) {
         this.onLoggableEventListener = onLoggableEventListener;
+    }
+
+    public synchronized void setOnServerSettingsMessageReceivedListener(OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener) {
+        this.onServerSettingsMessageReceivedListener = onServerSettingsMessageReceivedListener;
+    }
+
+    public ServerSettings getServerSettings() {
+        return serverSettings;
     }
 }

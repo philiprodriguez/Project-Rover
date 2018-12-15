@@ -1,13 +1,25 @@
 package xyz.philiprodriguez.projectrover;
 
+import android.content.DialogInterface;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.ImageView;
+import android.widget.PopupMenu;
 import android.widget.SeekBar;
+import android.widget.Switch;
+import android.widget.TextView;
 import android.widget.Toast;
+import android.support.v7.widget.Toolbar;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,14 +27,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
 import xyz.philiprodriguez.projectrovercommunications.OnClientConnectionKilledListener;
 import xyz.philiprodriguez.projectrovercommunications.OnFrameReceivedListener;
+import xyz.philiprodriguez.projectrovercommunications.OnServerStateMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.ProjectRoverClient;
+import xyz.philiprodriguez.projectrovercommunications.ServerSettings;
+import xyz.philiprodriguez.projectrovercommunications.ServerSettingsMessage;
+import xyz.philiprodriguez.projectrovercommunications.ServerStateMessage;
 
 public class ConnectedActivity extends AppCompatActivity {
     public static final String CLASS_IDENTIFIER = "ConnectedActivity";
 
-    private volatile ImageView imgCameraView;
+    private ImageView imgCameraView;
     private SeekBar sebUpDown;
     private SeekBar sebLeftRight;
+    private TextView txtHUDInfo;
+    private Button btnMenu;
 
     private volatile int port;
     private volatile String host;
@@ -115,6 +133,17 @@ public class ConnectedActivity extends AppCompatActivity {
                             });
                         }
                     });
+                    projectRoverClient.setOnServerStateMessageReceivedListener(new OnServerStateMessageReceivedListener() {
+                        @Override
+                        public void OnServerStateMessageReceived(final ServerStateMessage serverStateMessage) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    txtHUDInfo.setText("Robot Phone Battery: " + serverStateMessage.getPhoneBatteryLevel() + "%");
+                                }
+                            });
+                        }
+                    });
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
@@ -157,6 +186,41 @@ public class ConnectedActivity extends AppCompatActivity {
         imgCameraView = findViewById(R.id.imgCameraView_Connected);
         sebUpDown = findViewById(R.id.sebUpDown_Connected);
         sebLeftRight = findViewById(R.id.sebLeftRight);
+        txtHUDInfo = findViewById(R.id.txtHUDInfo_Connected);
+        btnMenu = findViewById(R.id.btnMenu_Connected);
+
+        btnMenu.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                PopupMenu popupMenu = new PopupMenu(ConnectedActivity.this, btnMenu);
+                popupMenu.getMenuInflater().inflate(R.menu.connected_menu, popupMenu.getMenu());
+
+                if (projectRoverClient == null) {
+                    for (int i = 0; i < popupMenu.getMenu().size(); i++) {
+                        popupMenu.getMenu().getItem(i).setEnabled(false);
+                    }
+                }
+
+                popupMenu.getMenu().getItem(0).setOnMenuItemClickListener(new MenuItem.OnMenuItemClickListener() {
+                    @Override
+                    public boolean onMenuItemClick(MenuItem item) {
+                        ServerSettings pss = projectRoverClient.getPerceivedServerSettings();
+                        pss.setHeadlightOn(!pss.getHeadlightOn());
+                        projectRoverClient.doEnqueueServerSettingsMessage(new ServerSettingsMessage(System.currentTimeMillis(), pss));
+                        return true;
+                    }
+                });
+                popupMenu.getMenu().getItem(1).setOnMenuItemClickListener(new MenuItem.OnMenuItemClickListener() {
+                    @Override
+                    public boolean onMenuItemClick(MenuItem item) {
+                        showSettingsDialog();
+                        return true;
+                    }
+                });
+
+                popupMenu.show();
+            }
+        });
 
         sebUpDown.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -207,6 +271,57 @@ public class ConnectedActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    private void showSettingsDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Robot Settings");
+
+        LayoutInflater layoutInflater = this.getLayoutInflater();
+        View rootView = layoutInflater.inflate(R.layout.dialog_server_settings, null);
+
+        Switch headlightOn = rootView.findViewById(R.id.switchHeadlightOn);
+        SeekBar jpegQuality = rootView.findViewById(R.id.sebJpegQuality);
+
+        headlightOn.setChecked(projectRoverClient.getPerceivedServerSettings().getHeadlightOn());
+        jpegQuality.setProgress(projectRoverClient.getPerceivedServerSettings().getJpegQuality());
+
+        headlightOn.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                if (projectRoverClient != null) {
+                    ServerSettings pss = projectRoverClient.getPerceivedServerSettings();
+                    pss.setHeadlightOn(isChecked);
+                    projectRoverClient.doEnqueueServerSettingsMessage(new ServerSettingsMessage(System.currentTimeMillis(), pss));
+                }
+            }
+        });
+
+        jpegQuality.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                if (projectRoverClient != null) {
+                    ServerSettings pss = projectRoverClient.getPerceivedServerSettings();
+                    pss.setJpegQuality(seekBar.getProgress());
+                    projectRoverClient.doEnqueueServerSettingsMessage(new ServerSettingsMessage(System.currentTimeMillis(), pss));
+                }
+            }
+        });
+
+        builder.setView(rootView);
+        builder.setNegativeButton("Dismiss", null);
+        AlertDialog created = builder.create();
+        created.show();
     }
 
     private void sendUpdate() {

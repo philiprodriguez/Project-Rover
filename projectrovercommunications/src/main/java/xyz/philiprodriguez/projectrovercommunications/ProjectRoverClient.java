@@ -21,6 +21,7 @@ public class ProjectRoverClient {
 
     private volatile OnFrameReceivedListener onFrameReceivedListener;
     private volatile OnClientConnectionKilledListener onClientConnectionKilledListener;
+    private volatile OnServerStateMessageReceivedListener onServerStateMessageReceivedListener;
 
     private final Socket clientSocket;
 
@@ -30,9 +31,13 @@ public class ProjectRoverClient {
 
     private final BlockingQueue<ByteableMessage> sendQueue = new LinkedBlockingQueue<ByteableMessage>();
 
+    private final ServerSettings perceivedServerSettings;
+    private volatile ServerStateMessage latestServerStateMessage;
+
     public ProjectRoverClient(String address, int port) throws IOException {
         this.address = address;
         this.port = port;
+        this.perceivedServerSettings = new ServerSettings();
 
         GlobalLogger.log(CLASS_IDENTIFIER, null, "Attempting to connect to server...");
         this.clientSocket = new Socket(address, port);
@@ -85,6 +90,13 @@ public class ProjectRoverClient {
                         if (startCode == new JPEGFrameMessage().getStartCode()) {
                             JPEGFrameMessage message = new JPEGFrameMessage().fromBytes(messageBytes);
                             onFrameReceivedListener.OnFrameReceived(message.getImage());
+                        } else if (startCode == new ServerSettingsMessage().getStartCode()) {
+                            ServerSettingsMessage message = new ServerSettingsMessage().fromBytes(messageBytes);
+                            perceivedServerSettings.setFromServerSettings(message.getServerSettings());
+                        } else if (startCode == new ServerStateMessage().getStartCode()) {
+                            ServerStateMessage message = new ServerStateMessage().fromBytes(messageBytes);
+                            latestServerStateMessage = message;
+                            onServerStateMessageReceivedListener.OnServerStateMessageReceived(message);
                         } else {
                             GlobalLogger.log(CLASS_IDENTIFIER, "e", "Read illegal start code of " + startCode);
                         }
@@ -162,24 +174,31 @@ public class ProjectRoverClient {
         }
     }
 
-
-    public synchronized OnFrameReceivedListener getOnFrameReceivedListener() {
-        return onFrameReceivedListener;
-    }
-
-    public synchronized void setOnFrameReceivedListener(OnFrameReceivedListener onFrameReceivedListener) {
+    public void setOnFrameReceivedListener(OnFrameReceivedListener onFrameReceivedListener) {
         this.onFrameReceivedListener = onFrameReceivedListener;
     }
 
-    public synchronized void setOnClientConnectionKilledListener(OnClientConnectionKilledListener onClientConnectionKilledListener) {
+    public void setOnClientConnectionKilledListener(OnClientConnectionKilledListener onClientConnectionKilledListener) {
         this.onClientConnectionKilledListener = onClientConnectionKilledListener;
     }
 
-    public synchronized OnClientConnectionKilledListener getOnClientConnectionKilledListener() {
-        return onClientConnectionKilledListener;
+    public void setOnServerStateMessageReceivedListener(OnServerStateMessageReceivedListener onServerStateMessageReceivedListener) {
+        this.onServerStateMessageReceivedListener = onServerStateMessageReceivedListener;
     }
 
-    public synchronized void doEnqueueMotorStateMessage(MotorStateMessage motorStateMessage) {
+    public void doEnqueueMotorStateMessage(MotorStateMessage motorStateMessage) {
         sendQueue.add(motorStateMessage);
+    }
+
+    public void doEnqueueServerSettingsMessage(ServerSettingsMessage serverSettingsMessage) {
+        sendQueue.add(serverSettingsMessage);
+    }
+
+    public ServerSettings getPerceivedServerSettings() {
+        return perceivedServerSettings;
+    }
+
+    public ServerStateMessage getLatestServerStateMessage() {
+        return latestServerStateMessage;
     }
 }

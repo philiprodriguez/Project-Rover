@@ -13,12 +13,15 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.net.wifi.WifiManager;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.format.Formatter;
 import android.util.Size;
 import android.view.Surface;
 import android.view.TextureView;
@@ -29,29 +32,33 @@ import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.LinkedList;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import xyz.philiprodriguez.projectrovercommunications.GlobalLogger;
 import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
 import xyz.philiprodriguez.projectrovercommunications.OnLoggableEventListener;
 import xyz.philiprodriguez.projectrovercommunications.OnMotorStateMessageReceivedListener;
+import xyz.philiprodriguez.projectrovercommunications.OnServerSettingsMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.ProjectRoverServer;
 import xyz.philiprodriguez.projectrovercommunications.ServerSettings;
+import xyz.philiprodriguez.projectrovercommunications.ServerSettingsMessage;
+import xyz.philiprodriguez.projectrovercommunications.ServerStateMessage;
 
 public class MainActivity extends AppCompatActivity {
     public static final String CLASS_IDENTIFIER = "MainActivity (Server)";
     private static final int CAMERA_PERMISSION_CODE = 315736;
+    public static final byte[] BLUETOOTH_START_SEQUENCE = new byte[]{'a', '8', 'f', 'e', 'J', '2', '9', 'p'};
+    private static final int MAX_STATUS_TEXT_SIZE = 100;
 
     private ProjectRoverServer projectRoverServer;
 
-    private final StringBuilder statusText = new StringBuilder();
+    private final LinkedList<String> statusTexts = new LinkedList<String>();
 
     private ScrollView scrStatusScrollView;
     private TextView txtStatusMessage;
@@ -66,10 +73,16 @@ public class MainActivity extends AppCompatActivity {
     Handler cameraBackgroundHandler;
     CameraDevice.StateCallback cameraStateCallback;
     CameraDevice cameraDevice;
+    CaptureRequest.Builder captureRequestBuilder;
+    CameraCaptureSession cameraCaptureSession;
 
     // Camera timer only
-    Handler timerHandler;
-    Runnable timerRunnable;
+    Handler cameraTimerHandler;
+    Runnable cameraTimerRunnable;
+
+    // State send timer only
+    Handler stateSendTimerHandler;
+    Runnable stateSendTimerRunnble;
 
     // Bluetooth shit only
     BluetoothDevice bluetoothDevice;
@@ -81,34 +94,39 @@ public class MainActivity extends AppCompatActivity {
     Thread bluetoothOutThread;
 
     private void setStatusAndLog(String message) {
-        GlobalLogger.log(CLASS_IDENTIFIER, null, "Status: " + message);
-        statusText.append(new Date().toString());
-        statusText.append(": ");
-        statusText.append(message);
-        statusText.append(System.lineSeparator());
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                txtStatusMessage.setText(statusText);
-                scrStatusScrollView.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        scrStatusScrollView.fullScroll(View.FOCUS_DOWN);
-                    }
-                });
+        synchronized (statusTexts) {
+            GlobalLogger.log(CLASS_IDENTIFIER, null, "Status: " + message);
+            statusTexts.add(new Date().toString() + ": " + message);
+            while (statusTexts.size() > MAX_STATUS_TEXT_SIZE) {
+                statusTexts.removeFirst();
             }
-        });
+            final StringBuffer sb = new StringBuffer();
+            for (String s : statusTexts) {
+                sb.append(s);
+                sb.append(System.lineSeparator());
+            }
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    txtStatusMessage.setText(sb);
+                    scrStatusScrollView.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            scrStatusScrollView.fullScroll(View.FOCUS_DOWN);
+                        }
+                    });
+                }
+            });
+        }
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         initComponents();
     }
 
-    public static final byte[] BLUETOOTH_START_SEQUENCE = new byte[]{'a', '8', 'f', 'e', 'J', '2', '9', 'p'};
     private void enqueueBluetoothMessage(byte[] everythingExceptStartSequence) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
@@ -139,27 +157,51 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        timerHandler = new Handler();
-        timerRunnable = new Runnable() {
+        cameraTimerHandler = new Handler();
+        cameraTimerRunnable = new Runnable() {
             @Override
             public void run() {
                 if (projectRoverServer != null) {
-                    projectRoverServer.doEnqueueImageAndRecycleBitmap(txvCameraPreview.getBitmap(180, 320));
+                    projectRoverServer.doEnqueueImageAndRecycleBitmap(txvCameraPreview.getBitmap(225, 400));
                 }
-                timerHandler.postDelayed(timerRunnable, 20);
+                cameraTimerHandler.postDelayed(cameraTimerRunnable, 20);
             }
         };
-        timerHandler.postDelayed(timerRunnable, 20);
+        cameraTimerHandler.postDelayed(cameraTimerRunnable, 20);
+
+        stateSendTimerHandler = new Handler();
+        stateSendTimerRunnble = new Runnable() {
+            @Override
+            public void run() {
+                if (projectRoverServer != null) {
+                    BatteryManager bm = (BatteryManager)getSystemService(BATTERY_SERVICE);
+                    int batLevel = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                    projectRoverServer.doEnqueueServerStateMessage(new ServerStateMessage(System.currentTimeMillis(), batLevel));
+                }
+                stateSendTimerHandler.postDelayed(stateSendTimerRunnble, 5000);
+            }
+        };
+        stateSendTimerHandler.postDelayed(stateSendTimerRunnble, 5000);
     }
 
     private void startServer() {
         setStatusAndLog("Starting server...");
-        ServerSettings serverSettings = new ServerSettings();
-        projectRoverServer = new ProjectRoverServer(7345, serverSettings);
+
+        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        if (wifiManager == null || !wifiManager.isWifiEnabled()) {
+            setStatusAndLog("Cannot start since Wi-Fi is off!");
+            return;
+        }
+        if  (wifiManager.getConnectionInfo().getNetworkId() == -1) {
+            setStatusAndLog("Cannto start since Wi-Fi is disconnected!");
+            return;
+        }
+        setStatusAndLog("Wi-Fi IP address is " + Formatter.formatIpAddress(wifiManager.getConnectionInfo().getIpAddress()));
+
+        projectRoverServer = new ProjectRoverServer(7345, new ServerSettings());
         projectRoverServer.setOnMotorStateMessageReceivedListener(new OnMotorStateMessageReceivedListener() {
             @Override
             public void OnMotorStateMessageReceived(MotorStateMessage message) {
-                //setStatusAndLog("Got motor message: " + message.toString());
                 enqueueBluetoothMessage(new byte[]{'m', (byte)(message.getLeftForward()), (byte)(message.getLeftBackward()), (byte)(message.getRightForward()), (byte)(message.getRightBackward())});
             }
         });
@@ -169,7 +211,27 @@ public class MainActivity extends AppCompatActivity {
                 setStatusAndLog(message);
             }
         });
-        setStatusAndLog("Server started with settings:" + System.lineSeparator() + serverSettings.toString());
+        projectRoverServer.setOnServerSettingsMessageReceivedListener(new OnServerSettingsMessageReceivedListener() {
+            @Override
+            public void OnServerSettingsMessageReceived(ServerSettingsMessage serverSettingsMessage) {
+                try {
+                    if (cameraCaptureSession != null && captureRequestBuilder != null) {
+                        if (serverSettingsMessage.getServerSettings().getHeadlightOn()) {
+                            captureRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH);
+                        } else {
+                            captureRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
+                        }
+                        cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, cameraBackgroundHandler);
+                    }
+                } catch (CameraAccessException e) {
+                    e.printStackTrace();
+                    setStatusAndLog("Failed to set server settings related to headlight! " + e.getMessage());
+                }
+
+                setStatusAndLog("Set server settings: " + serverSettingsMessage.getServerSettings().toString());
+            }
+        });
+        setStatusAndLog("Server started with settings:" + System.lineSeparator() + projectRoverServer.getServerSettings().toString());
         btnStopServer.setText("Stop Server");
     }
 
@@ -197,9 +259,7 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
-
-                }
+                public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {}
 
                 @Override
                 public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
@@ -207,9 +267,7 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-
-                }
+                public void onSurfaceTextureUpdated(SurfaceTexture surface) {}
             });
         }
 
@@ -224,8 +282,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+
         closeCamera();
         closeCameraBackgroundHandler();
+
         closeBluetooth();
         closeBluetoothHandler();
         if (projectRoverServer != null) {
@@ -490,12 +550,13 @@ public class MainActivity extends AppCompatActivity {
             cameraDevice.createCaptureSession(Collections.singletonList(surface), new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession session) {
+                    cameraCaptureSession = session;
                     try {
-                        CaptureRequest.Builder captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                        captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
 //                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
 //                        captureRequestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, 0f);
                         captureRequestBuilder.addTarget(surface);
-                        session.setRepeatingRequest(captureRequestBuilder.build(), null, cameraBackgroundHandler);
+                        cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, cameraBackgroundHandler);
                         setStatusAndLog("Capture session created!");
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
