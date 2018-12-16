@@ -95,7 +95,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void setStatusAndLog(String message) {
         synchronized (statusTexts) {
-            GlobalLogger.log(CLASS_IDENTIFIER, null, "Status: " + message);
+            GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Status: " + message);
             statusTexts.add(new Date().toString() + ": " + message);
             while (statusTexts.size() > MAX_STATUS_TEXT_SIZE) {
                 statusTexts.removeFirst();

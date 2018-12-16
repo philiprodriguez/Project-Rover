@@ -2,40 +2,37 @@ package xyz.philiprodriguez.projectrovercommunications;
 
 import android.graphics.Bitmap;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.nio.ByteBuffer;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ProjectRoverServer {
+    // A class identifier just for logging purposes.
     public static final String CLASS_IDENTIFIER = "ProjectRoverServer";
-    public static final int MAX_MESSAGE_SIZE = 1024*1024*64; // 64MB
-    public static final byte[] START_SEQUENCE = new byte[]{127, 65, 27, 94, 56, 23, 19, 122, 12, 56, 32, 49};
 
+    // This is the port on which the server is running.
     private final int port;
 
+    // Listeners to be attached to the underlying receiverThread once it is started
+    private volatile OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener;
+    private volatile OnLoggableEventListener onLoggableEventListener;
+    private volatile OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener;
+
+    // This is the container for the server's current client-mutable settings.
     private final ServerSettings serverSettings;
 
+    // This represents whether or not the server is in the killed state.
     private final AtomicBoolean isKilled;
 
     private volatile ServerSocket serverSocket;
     private final Thread connectorThread;
-    private volatile Thread inThread;
-    private volatile Thread outThread;
+    private volatile ReceiverThread receiverThread;
+    private volatile SenderThread senderThread;
 
     private volatile Socket clientSocket;
     private final AtomicBoolean isClientConnected;
-    private final BlockingQueue<ByteableMessage> sendQueue = new LinkedBlockingQueue<ByteableMessage>();
-
-    private volatile OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener;
-    private volatile OnLoggableEventListener onLoggableEventListener;
-    private volatile OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener;
 
     public ProjectRoverServer(final int port, final ServerSettings serverSettings) {
         this.port = port;
@@ -46,7 +43,7 @@ public class ProjectRoverServer {
         connectorThread = new Thread(new Runnable() {
             @Override
             public void run() {
-                GlobalLogger.log(CLASS_IDENTIFIER, null, "Server connectorThread starting...");
+                GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Server connectorThread starting...");
                 try {
                     serverSocket = new ServerSocket(port);
 
@@ -54,120 +51,57 @@ public class ProjectRoverServer {
                         isClientConnected.set(false);
 
                         // Accept client
-                        GlobalLogger.log(CLASS_IDENTIFIER, null, "Server connectorThread listening on port " + port + "...");
+                        GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Server connectorThread listening on port " + port + "...");
                         Socket cs = serverSocket.accept();
-                        GlobalLogger.log(CLASS_IDENTIFIER, null, "Accepted client on socket " + getClientSocket());
-                        setClientSocket(cs);
+                        GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Accepted client on socket " + clientSocket);
+                        clientSocket = cs;
 
 
-                        setInThread(new Thread(new Runnable() {
+                        receiverThread = new ReceiverThread(clientSocket, new OnThreadFinishedListener() {
                             @Override
-                            public void run() {
-                                GlobalLogger.log(CLASS_IDENTIFIER, null, "Server inThread is starting!");
-                                try {
-                                    BufferedInputStream socketInput = new BufferedInputStream(clientSocket.getInputStream());
-                                    outer: while (!Thread.currentThread().isInterrupted()) {
-                                        for (int i = 0; i < START_SEQUENCE.length; i++) {
-                                            int nextByte = socketInput.read();
-                                            if (nextByte < 0) {
-                                                // The stream is closed!
-                                                break outer;
-                                            }
-                                            if (nextByte != START_SEQUENCE[i]) {
-                                                continue outer;
-                                            }
-                                        }
-                                        GlobalLogger.log(CLASS_IDENTIFIER, "inThread", "Start sequence OK...");
+                            public void onThreadFinished() {
+                                killClientConnection();
+                            }
+                        });
+                        receiverThread.setOnServerSettingsMessageReceivedListener(new OnServerSettingsMessageReceivedListener() {
+                            @Override
+                            public void OnServerSettingsMessageReceived(ServerSettingsMessage serverSettingsMessage) {
+                                // Update our ServerSettings
+                                serverSettings.setFromServerSettings(serverSettingsMessage.getServerSettings());
 
-                                        int startCode = socketInput.read();
-                                        GlobalLogger.log(CLASS_IDENTIFIER, "inThread", "Start code of " + startCode);
-
-                                        ByteBuffer messageSizeBB = ByteBuffer.allocate(4);
-                                        messageSizeBB.put((byte) socketInput.read());
-                                        messageSizeBB.put((byte) socketInput.read());
-                                        messageSizeBB.put((byte) socketInput.read());
-                                        messageSizeBB.put((byte) socketInput.read());
-                                        messageSizeBB.rewind();
-                                        int messageSize = messageSizeBB.getInt();
-
-                                        if (messageSize < 0 || messageSize >= MAX_MESSAGE_SIZE) {
-                                            GlobalLogger.log(CLASS_IDENTIFIER, "e", "Invalid message size of " + messageSize + "!");
-                                            continue outer;
-                                        }
-                                        GlobalLogger.log(CLASS_IDENTIFIER, "inThread", "Message size of " + messageSize);
-
-                                        byte[] messageBytes = new byte[messageSize];
-                                        for (int i = 0; i < messageBytes.length; i++) {
-                                            int nextByte = socketInput.read();
-                                            if (nextByte < 0) {
-                                                // The stream is closed!
-                                                break outer;
-                                            }
-                                            messageBytes[i] = (byte) nextByte;
-                                        }
-
-                                        GlobalLogger.log(CLASS_IDENTIFIER, "inThread", "Message bytes read...");
-                                        if (startCode == new MotorStateMessage().getStartCode()) {
-                                            MotorStateMessage message = new MotorStateMessage().fromBytes(messageBytes);
-                                            onMotorStateMessageReceivedListener.OnMotorStateMessageReceived(message);
-                                        } else if (startCode == new ServerSettingsMessage().getStartCode()) {
-                                            ServerSettingsMessage message = new ServerSettingsMessage().fromBytes(messageBytes);
-                                            serverSettings.setFromServerSettings(message.getServerSettings());
-                                            onServerSettingsMessageReceivedListener.OnServerSettingsMessageReceived(message);
-                                        } else {
-                                            GlobalLogger.log(CLASS_IDENTIFIER, "e", "Read illegal start code of " + startCode);
-                                        }
-                                    }
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                } finally {
-                                    GlobalLogger.log(CLASS_IDENTIFIER, "inThread", "Server inThread is exiting!");
-                                    killClientConnection();
+                                // Pass through
+                                if (onServerSettingsMessageReceivedListener != null) {
+                                    onServerSettingsMessageReceivedListener.OnServerSettingsMessageReceived(serverSettingsMessage);
                                 }
                             }
-                        }));
+                        });
+                        receiverThread.setOnLoggableEventListener(onLoggableEventListener);
+                        receiverThread.setOnMotorStateMessageReceivedListener(onMotorStateMessageReceivedListener);
 
-                        setOutThread(new Thread(new Runnable() {
+                        senderThread = new SenderThread(clientSocket, new OnThreadFinishedListener() {
                             @Override
-                            public void run() {
-                                GlobalLogger.log(CLASS_IDENTIFIER, null, "Server outThread is starting!");
-                                try {
-                                    BufferedOutputStream socketOutput = new BufferedOutputStream(getClientSocket().getOutputStream());
-
-                                    while (!Thread.currentThread().isInterrupted()) {
-                                        ByteableMessage nextMessage = sendQueue.take();
-                                        GlobalLogger.log(CLASS_IDENTIFIER, null, "Sending message " + nextMessage.toString());
-                                        socketOutput.write(nextMessage.getBytes());
-                                        socketOutput.flush();
-                                    }
-                                } catch (InterruptedException e) {
-                                    e.printStackTrace();
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                } finally {
-                                    GlobalLogger.log(CLASS_IDENTIFIER, null, "Server outThread is exiting!");
-                                    killClientConnection();
-                                }
+                            public void onThreadFinished() {
+                                killClientConnection();
                             }
-                        }));
+                        });
 
-                        getInThread().start();
-                        getOutThread().start();
+                        receiverThread.start();
+                        senderThread.start();
                         isClientConnected.set(true);
 
                         // Send out an initial ServerSettings message to let the client know where we are at!
-                        sendQueue.add(new ServerSettingsMessage(System.currentTimeMillis(), serverSettings));
+                        senderThread.getSendQueue().add(new ServerSettingsMessage(System.currentTimeMillis(), serverSettings));
 
                         waitForKillClientConnection();
                     }
                 } catch (SocketException e) {
-                    GlobalLogger.log(CLASS_IDENTIFIER, null, "Socket exception occurred...");
+                    GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.ERROR, "Socket exception occurred...");
                     e.printStackTrace();
                 } catch (IOException e) {
                     e.printStackTrace();
                     throw new IllegalStateException("Failed to start server!", e);
                 } finally {
-                    GlobalLogger.log(CLASS_IDENTIFIER, null, "Server connectorThread is exiting!");
+                    GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.ERROR, "Server connectorThread is exiting!");
                     killServer();
                 }
             }
@@ -177,11 +111,11 @@ public class ProjectRoverServer {
     }
 
     public void killClientConnection() {
-        GlobalLogger.log(CLASS_IDENTIFIER, null, "Killing client connection...");
-        if (getInThread() != null)
-            getInThread().interrupt();
-        if (getOutThread() != null)
-            getOutThread().interrupt();
+        GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Killing client connection...");
+        if (receiverThread != null)
+            receiverThread.interrupt();
+        if (senderThread != null)
+            senderThread.interrupt();
         try {
             clientSocket.close();
         } catch (Exception e) {
@@ -190,28 +124,24 @@ public class ProjectRoverServer {
     }
 
     public void waitForKillClientConnection() {
-        GlobalLogger.log(CLASS_IDENTIFIER, null, "waitForKillClientConnection called!");
+        GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "waitForKillClientConnection called!");
         try {
-            GlobalLogger.log(CLASS_IDENTIFIER, null, "Getting inThread");
-            Thread inThread = getInThread();
-            GlobalLogger.log(CLASS_IDENTIFIER, null, "Getting outThread");
-            Thread outThread = getOutThread();
-            GlobalLogger.log(CLASS_IDENTIFIER, null, "Joining inThread");
-            if (inThread != null)
-                inThread.join();
-            GlobalLogger.log(CLASS_IDENTIFIER, null, "Joining outThread");
-            if (outThread != null)
-                outThread.join();
+            GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.EXCESS, "Joining receiverThread");
+            if (receiverThread != null)
+                receiverThread.join();
+            GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.EXCESS, "Joining senderThread");
+            if (senderThread != null)
+                senderThread.join();
         } catch (InterruptedException e) {
             e.printStackTrace();
-            GlobalLogger.log(CLASS_IDENTIFIER, null, "waitForKillClientConnection interrupted!");
+            GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.EXCESS, "waitForKillClientConnection interrupted!");
         } finally {
-            GlobalLogger.log(CLASS_IDENTIFIER, null, "waitForKillClientConnection completed!");
+            GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "waitForKillClientConnection completed!");
         }
     }
 
     public void killServer() {
-        GlobalLogger.log(CLASS_IDENTIFIER, null, "Killing server...");
+        GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Killing server...");
         killClientConnection();
         connectorThread.interrupt();
         try {
@@ -230,7 +160,7 @@ public class ProjectRoverServer {
             e.printStackTrace();
             throw new IllegalStateException("Failed to kill server!", e);
         } finally {
-            GlobalLogger.log(CLASS_IDENTIFIER, null, "waitForKillServer completed!");
+            GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "waitForKillServer completed!");
         }
     }
 
@@ -238,40 +168,18 @@ public class ProjectRoverServer {
         return isKilled.get();
     }
 
-    private synchronized void setClientSocket(Socket clientSocket) {
-        this.clientSocket = clientSocket;
-    }
-
-    private synchronized Socket getClientSocket() {
-        return clientSocket;
-    }
-
-    private synchronized void setInThread(Thread inThread) {
-        this.inThread = inThread;
-    }
-
-    private synchronized Thread getInThread() {
-        return inThread;
-    }
-
-    private synchronized void setOutThread(Thread outThread) {
-        this.outThread = outThread;
-    }
-
-    private synchronized Thread getOutThread() {
-        return outThread;
-    }
-
     public synchronized void doEnqueueImageAndRecycleBitmap(Bitmap bitmap) {
         if (!isKilled() && isClientConnected.get()) {
             JPEGFrameMessage jpegFrameMessage = new JPEGFrameMessage(System.currentTimeMillis(), bitmap, serverSettings.getJpegQuality());
-            sendQueue.add(jpegFrameMessage);
+            senderThread.getSendQueue().add(jpegFrameMessage);
             bitmap.recycle();
         }
     }
 
     public synchronized void doEnqueueServerStateMessage(ServerStateMessage serverStateMessage) {
-        sendQueue.add(serverStateMessage);
+        if (!isKilled() && isClientConnected.get()) {
+            senderThread.getSendQueue().add(serverStateMessage);
+        }
     }
 
     public synchronized void setOnMotorStateMessageReceivedListener(OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener) {

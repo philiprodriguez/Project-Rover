@@ -35,11 +35,11 @@ public class JPEGFrameMessage implements ByteableMessage<JPEGFrameMessage> {
     public byte[] getBytes() {
         int extraLength = 8 + frameBytes.length;
 
-        ByteBuffer byteBuffer = ByteBuffer.allocate(ProjectRoverServer.START_SEQUENCE.length + 1 + 4 + extraLength);
+        ByteBuffer byteBuffer = ByteBuffer.allocate(ReceiverThread.START_SEQUENCE.length + 1 + 4 + extraLength);
 
         // Start sequence
-        for (int i = 0; i < ProjectRoverServer.START_SEQUENCE.length; i++) {
-            byteBuffer.put(ProjectRoverServer.START_SEQUENCE[i]);
+        for (int i = 0; i < ReceiverThread.START_SEQUENCE.length; i++) {
+            byteBuffer.put(ReceiverThread.START_SEQUENCE[i]);
         }
 
         // Start code
