@@ -20,6 +20,11 @@ void setup() {
   pinMode(pinLeftBackward, OUTPUT); // Left backward
   pinMode(pinRightForward, OUTPUT); // Right forward
   pinMode(pinRightBackward, OUTPUT); // Right backward
+
+
+  // Set ALL motor pins (which are sharing the same timer) from their default of a loud 488Mhz to the silent 60Khz
+  analogWriteFrequency(pinLeftForward, 30000);
+  
   pinMode(13, OUTPUT);
   Serial.begin(9600);
   Serial3.begin(9600);
