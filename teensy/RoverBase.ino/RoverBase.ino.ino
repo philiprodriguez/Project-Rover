@@ -8,13 +8,20 @@
   and very simple code. Process incoming commands sequentially, without any delaying if at all possible.
  */
 
+#include <Servo.h>
+
 int pinLED = 13;
+int pinServo = 16;
 int pinLeftForward = 23;
 int pinLeftBackward = 22;
 int pinRightForward = 21;
 int pinRightBackward = 20;
 
-void setup() {                
+Servo servoTilt;
+
+void setup() {
+  pinMode(13, OUTPUT);
+  
   // initialize the digital pin as an output.
   pinMode(pinLeftForward, OUTPUT); // Left forward
   pinMode(pinLeftBackward, OUTPUT); // Left backward
@@ -23,9 +30,12 @@ void setup() {
 
 
   // Set ALL motor pins (which are sharing the same timer) from their default of a loud 488Mhz to the silent 60Khz
-  analogWriteFrequency(pinLeftForward, 30000);
+  analogWriteFrequency(pinLeftForward, 22000);
+
+  // Servo initialization
+  servoTilt.attach(16);
+  servoTilt.write(100);
   
-  pinMode(13, OUTPUT);
   Serial.begin(9600);
   Serial3.begin(9600);
   Serial3.setTimeout(10000);
@@ -74,13 +84,20 @@ void loop() {
     Serial.println(rightForward);
     Serial.println(rightBackward);
   } else if (opcode == 'l') {
-    // Motor set
+    // LED set
     Serial.println("Opcode was for led set...");
     int val = nextSerial3Byte();
     if (val == 'h') {
       digitalWrite(pinLED, HIGH);
     } else if (val == 'l') {
       digitalWrite(pinLED, LOW);
+    }
+  } else if (opcode == 's') {
+    // Servo set
+    Serial.println("Opcode was for servo set...");
+    int val = nextSerial3Byte();
+    if (val >= 5 && val <= 175) {
+      servoTilt.write(val);
     }
   } else {
     Serial.println("Illegal opcode!");

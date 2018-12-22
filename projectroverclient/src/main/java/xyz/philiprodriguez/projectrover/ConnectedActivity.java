@@ -282,9 +282,11 @@ public class ConnectedActivity extends AppCompatActivity {
 
         Switch headlightOn = rootView.findViewById(R.id.switchHeadlightOn);
         SeekBar jpegQuality = rootView.findViewById(R.id.sebJpegQuality);
+        SeekBar servoRot = rootView.findViewById(R.id.sebServoRot);
 
         headlightOn.setChecked(projectRoverClient.getPerceivedServerSettings().getHeadlightOn());
         jpegQuality.setProgress(projectRoverClient.getPerceivedServerSettings().getJpegQuality());
+        servoRot.setProgress(projectRoverClient.getPerceivedServerSettings().getServoRotationAmount());
 
         headlightOn.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -313,6 +315,27 @@ public class ConnectedActivity extends AppCompatActivity {
                 if (projectRoverClient != null) {
                     ServerSettings pss = projectRoverClient.getPerceivedServerSettings();
                     pss.setJpegQuality(seekBar.getProgress());
+                    projectRoverClient.doEnqueueServerSettingsMessage(new ServerSettingsMessage(System.currentTimeMillis(), pss));
+                }
+            }
+        });
+
+        servoRot.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                if (projectRoverClient != null) {
+                    ServerSettings pss = projectRoverClient.getPerceivedServerSettings();
+                    pss.setServoRotationAmount(seekBar.getProgress());
                     projectRoverClient.doEnqueueServerSettingsMessage(new ServerSettingsMessage(System.currentTimeMillis(), pss));
                 }
             }

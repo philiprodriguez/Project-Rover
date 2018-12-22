@@ -228,6 +228,8 @@ public class MainActivity extends AppCompatActivity {
                     setStatusAndLog("Failed to set server settings related to headlight! " + e.getMessage());
                 }
 
+                enqueueBluetoothMessage(new byte[]{'s', (byte)(serverSettingsMessage.getServerSettings().getServoRotationAmount() + 5)});
+
                 setStatusAndLog("Set server settings: " + serverSettingsMessage.getServerSettings().toString());
             }
         });

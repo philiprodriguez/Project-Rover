@@ -11,7 +11,7 @@ public class ServerSettings {
         // Initialize default values
         this.jpegQuality = 30;
         this.headlightOn = false;
-        this.servoRotationAmount = 0;
+        this.servoRotationAmount = 100;
     }
 
     public synchronized void setJpegQuality(int jpegQuality) {
