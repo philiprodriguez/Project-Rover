@@ -1,0 +1,4 @@
+#Thu Dec 20 23:43:54 EST 2018
+base.0=/home/philip/Documents/ProjectRover/projectroverclient/build/intermediates/transforms/dexMerger/debug/0
+path.0=classes.dex
+renamed.0=classes.dex
