@@ -34,7 +34,6 @@ void setup() {
 
   // Servo initialization
   servoTilt.attach(16);
-  servoTilt.write(100);
   
   Serial.begin(9600);
   Serial3.begin(9600);
@@ -97,7 +96,28 @@ void loop() {
     Serial.println("Opcode was for servo set...");
     int val = nextSerial3Byte();
     if (val >= 5 && val <= 175) {
-      servoTilt.write(val);
+      int curValue = servoTilt.read();
+      int delayAmt = 105;
+      while(curValue != val) {
+        if (val > curValue) {
+          curValue++;
+        }
+        else {
+          curValue--;
+        }
+        servoTilt.write(curValue);
+        delay(delayAmt);
+        if (delayAmt > 5) {
+          delayAmt-=5;
+        }
+      }
+      // Small back off to prevent stress
+      delay(200);
+      if (curValue > 90) {
+        servoTilt.write(curValue-4);
+      } else {
+        servoTilt.write(curValue+4);
+      }
     }
   } else {
     Serial.println("Illegal opcode!");
