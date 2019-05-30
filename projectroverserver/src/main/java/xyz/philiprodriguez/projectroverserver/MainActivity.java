@@ -238,6 +238,14 @@ public class MainActivity extends AppCompatActivity {
         btnStopServer.setText("Start Server");
     }
 
+    // Constants for battery stuff
+    private final double a = -0.00000015515;
+    private final double b = 3.77174;
+    private final double c = 0.0000000001152;
+    private final double d = 0.00000518042;
+    private final double g = -1.00089;
+    private final double h = 1.00001;
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -278,10 +286,13 @@ public class MainActivity extends AppCompatActivity {
                     BatteryManager bm = (BatteryManager)getSystemService(BATTERY_SERVICE);
                     int batLevel = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
 
-                    // Magnic numbers here are based on Physics 2 maths to determine correct readings based on voltage divider setup...
-                    int primaryBatLevel = (int)(((lastReceivedVoltageValue.get()-565.0)/141.0)*100.0);
+                    // Magic based on Physics 2 for the voltage divider & regression to AGM charge chart
+                    final double x = lastReceivedVoltageValue.get() - 585.0;
+                    final double primaryBatLevel = Math.pow(a*Math.pow(x, b)+c*Math.pow(x, 5)+d*Math.pow(x,3)+g*x+h*x, 2) * 100.0;
+                    GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "primaryBatLevel is " + primaryBatLevel + " from x of " + x);
+                    final int primaryBatLevelInt = (int)Math.round(primaryBatLevel);
 
-                    projectRoverServer.doEnqueueServerStateMessage(new ServerStateMessage(System.currentTimeMillis(), batLevel, primaryBatLevel));
+                    projectRoverServer.doEnqueueServerStateMessage(new ServerStateMessage(System.currentTimeMillis(), batLevel, primaryBatLevelInt));
                 }
 
                 // Also tell Teensy to send us back updated voltage info for next time

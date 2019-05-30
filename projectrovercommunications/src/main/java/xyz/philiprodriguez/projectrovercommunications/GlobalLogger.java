@@ -25,7 +25,7 @@ public class GlobalLogger {
             return;
         }
         if (allowedClasses.contains(classIdentifier) || allowedClasses.size() <= 0) {
-            System.out.println("[" + level + "] (" + messageNum + "@" + System.currentTimeMillis() + ") " + message);
+            System.out.println("[" + level + ", \"" + classIdentifier + "\"] (" + messageNum + "@" + System.currentTimeMillis() + ") " + message);
         }
     }
 }
