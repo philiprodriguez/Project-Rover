@@ -30,7 +30,7 @@ public class SenderThread extends Thread {
 
             while (!Thread.currentThread().isInterrupted()) {
                 ByteableMessage nextMessage = sendQueue.take();
-                GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Sending message " + nextMessage.toString());
+                //GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Sending message " + nextMessage.toString());
                 socketOutput.write(nextMessage.getBytes());
                 socketOutput.flush();
             }

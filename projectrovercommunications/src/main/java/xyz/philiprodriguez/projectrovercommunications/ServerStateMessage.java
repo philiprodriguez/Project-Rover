@@ -5,19 +5,21 @@ import java.nio.ByteBuffer;
 public class ServerStateMessage implements ByteableMessage<ServerStateMessage>{
     private final long timestamp;
     private final int phoneBatteryLevel;
+    private final int primaryBatteryLevel;
 
     public ServerStateMessage() {
-        this(-1, -1);
+        this(-1, -1, -1);
     }
 
-    public ServerStateMessage(long timestamp, int phoneBatteryLevel) {
+    public ServerStateMessage(long timestamp, int phoneBatteryLevel, int primaryBatteryLevel) {
         this.timestamp = timestamp;
         this.phoneBatteryLevel = phoneBatteryLevel;
+        this.primaryBatteryLevel = primaryBatteryLevel;
     }
 
     @Override
     public byte[] getBytes() {
-        int extraLength = 8 + 4;
+        int extraLength = 8 + 4 + 4;
 
         ByteBuffer byteBuffer = ByteBuffer.allocate(ReceiverThread.START_SEQUENCE.length + 1 + 4 + extraLength);
 
@@ -32,12 +34,10 @@ public class ServerStateMessage implements ByteableMessage<ServerStateMessage>{
         // Message length
         byteBuffer.putInt(extraLength);
 
-        // timestamp
-        byteBuffer.putLong(getTimestamp());
-
         // Payload
+        byteBuffer.putLong(getTimestamp());
         byteBuffer.putInt(phoneBatteryLevel);
-
+        byteBuffer.putInt(primaryBatteryLevel);
 
         return byteBuffer.array();
     }
@@ -46,8 +46,9 @@ public class ServerStateMessage implements ByteableMessage<ServerStateMessage>{
     public ServerStateMessage fromBytes(byte[] messageBytes) {
         ByteBuffer byteBuffer = ByteBuffer.wrap(messageBytes);
         long timestamp = byteBuffer.getLong();
-        int pbl = byteBuffer.getInt();
-        return new ServerStateMessage(timestamp, pbl);
+        int phonebl = byteBuffer.getInt();
+        int primarybl = byteBuffer.getInt();
+        return new ServerStateMessage(timestamp, phonebl, primarybl);
     }
 
     @Override
@@ -62,5 +63,9 @@ public class ServerStateMessage implements ByteableMessage<ServerStateMessage>{
 
     public int getPhoneBatteryLevel() {
         return phoneBatteryLevel;
+    }
+
+    public int getPrimaryBatteryLevel() {
+        return primaryBatteryLevel;
     }
 }

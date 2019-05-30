@@ -63,7 +63,6 @@ public class ReceiverThread extends Thread {
                     GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.ERROR, "Invalid message size of " + messageSize + "!");
                     continue outer;
                 }
-                GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "Message size of " + messageSize);
 
                 byte[] messageBytes = new byte[messageSize];
                 for (int i = 0; i < messageBytes.length; i++) {

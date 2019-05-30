@@ -139,7 +139,11 @@ public class ConnectedActivity extends AppCompatActivity {
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    txtHUDInfo.setText("Robot Phone Battery: " + serverStateMessage.getPhoneBatteryLevel() + "%");
+                                    StringBuilder sb = new StringBuilder();
+                                    sb.append("Robot Primary Battery: " + serverStateMessage.getPrimaryBatteryLevel() + "%");
+                                    sb.append(System.lineSeparator());
+                                    sb.append("Robot Tablet Battery: " + serverStateMessage.getPhoneBatteryLevel() + "%");
+                                    txtHUDInfo.setText(sb.toString());
                                 }
                             });
                         }
