@@ -86,7 +86,7 @@ public class ProjectRoverClient {
             public void onThreadFinished() {
                 killClientConnection();
             }
-        });
+        }, 10);
 
         senderThread.start();
         receiverThread.start();
@@ -160,11 +160,11 @@ public class ProjectRoverClient {
     }
 
     public void doEnqueueMotorStateMessage(MotorStateMessage motorStateMessage) {
-        senderThread.getSendQueue().add(motorStateMessage);
+        senderThread.enqueueStrict(motorStateMessage);
     }
 
     public void doEnqueueServerSettingsMessage(ServerSettingsMessage serverSettingsMessage) {
-        senderThread.getSendQueue().add(serverSettingsMessage);
+        senderThread.enqueueStrict(serverSettingsMessage);
     }
 
     public ServerSettings getPerceivedServerSettings() {

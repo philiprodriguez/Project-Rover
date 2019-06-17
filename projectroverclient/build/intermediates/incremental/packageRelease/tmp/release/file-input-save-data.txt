@@ -1,0 +1,7 @@
+#Internal package file, do not edit.
+#Mon Jun 17 18:34:49 EDT 2019
+0.baseType=DIRECTORY
+0.base=/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/dex/release/mergeDexRelease/out
+0.path=classes.dex
+0.set=DEX
+count=1

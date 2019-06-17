@@ -83,14 +83,14 @@ public class ProjectRoverServer {
                             public void onThreadFinished() {
                                 killClientConnection();
                             }
-                        });
+                        }, 10);
 
                         receiverThread.start();
                         senderThread.start();
                         isClientConnected.set(true);
 
                         // Send out an initial ServerSettings message to let the client know where we are at!
-                        senderThread.getSendQueue().add(new ServerSettingsMessage(System.currentTimeMillis(), serverSettings));
+                        senderThread.enqueueStrict(new ServerSettingsMessage(System.currentTimeMillis(), serverSettings));
 
                         waitForKillClientConnection();
                     }
@@ -171,14 +171,14 @@ public class ProjectRoverServer {
     public synchronized void doEnqueueImageAndRecycleBitmap(Bitmap bitmap) {
         if (!isKilled() && isClientConnected.get()) {
             JPEGFrameMessage jpegFrameMessage = new JPEGFrameMessage(System.currentTimeMillis(), bitmap, serverSettings.getJpegQuality());
-            senderThread.getSendQueue().add(jpegFrameMessage);
+            senderThread.enqueueDroppable(jpegFrameMessage);
             bitmap.recycle();
         }
     }
 
     public synchronized void doEnqueueServerStateMessage(ServerStateMessage serverStateMessage) {
         if (!isKilled() && isClientConnected.get()) {
-            senderThread.getSendQueue().add(serverStateMessage);
+            senderThread.enqueueStrict(serverStateMessage);
         }
     }
 
