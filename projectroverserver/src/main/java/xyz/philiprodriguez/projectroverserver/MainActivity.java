@@ -287,10 +287,10 @@ public class MainActivity extends AppCompatActivity {
                     int batLevel = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
 
                     // Magic based on Physics 2 for the voltage divider & regression to AGM charge chart
-                    final double x = lastReceivedVoltageValue.get() - 575.0;
+                    final double x = lastReceivedVoltageValue.get() - 570.0;
                     final double primaryBatLevel = Math.pow(a*Math.pow(x, b)+c*Math.pow(x, 5)+d*Math.pow(x,3)+g*x+h*x, 2) * 100.0;
                     GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "primaryBatLevel is " + primaryBatLevel + " from x of " + x);
-                    final int primaryBatLevelInt = (int)Math.round(primaryBatLevel);
+                    final int primaryBatLevelInt = Math.min((int)Math.round(primaryBatLevel), 100);
 
                     projectRoverServer.doEnqueueServerStateMessage(new ServerStateMessage(System.currentTimeMillis(), batLevel, primaryBatLevelInt));
                 }
