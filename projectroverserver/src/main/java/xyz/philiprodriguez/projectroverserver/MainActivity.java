@@ -170,12 +170,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 if (projectRoverServer != null) {
-                    projectRoverServer.doEnqueueImageAndRecycleBitmap(txvCameraPreview.getBitmap(225, 400));
+                    projectRoverServer.doEnqueueImageAndRecycleBitmap(txvCameraPreview.getBitmap(360, 480));
                 }
-                cameraTimerHandler.postDelayed(cameraTimerRunnable, 33);
+                cameraTimerHandler.postDelayed(cameraTimerRunnable, 25);
             }
         };
-        cameraTimerHandler.postDelayed(cameraTimerRunnable, 33);
+        cameraTimerHandler.postDelayed(cameraTimerRunnable, 25);
     }
 
     private void startServer() {
@@ -608,8 +608,8 @@ public class MainActivity extends AppCompatActivity {
             // We have a camera with some camera characteristics!
             StreamConfigurationMap streamConfigurationMap = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             for (Size size : streamConfigurationMap.getOutputSizes(SurfaceTexture.class)) {
-                // Don't accept a size above 720p
-                if (size.getWidth() * size.getHeight() <= 1280*720) {
+                // Use a 4:3, namely 960x720.
+                if (size.getWidth() * size.getHeight() == 960*720) {
                     setStatusAndLog("Using camera size of " + size.toString());
                     cameraSize = size;
                     break;
