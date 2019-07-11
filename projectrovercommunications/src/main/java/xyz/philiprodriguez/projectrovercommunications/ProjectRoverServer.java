@@ -17,6 +17,7 @@ public class ProjectRoverServer {
 
     // Listeners to be attached to the underlying receiverThread once it is started
     private volatile OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener;
+    private volatile OnArmPositionMessageReceivedListener onArmPositionMessageReceivedListener;
     private volatile OnLoggableEventListener onLoggableEventListener;
     private volatile OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener;
 
@@ -77,6 +78,7 @@ public class ProjectRoverServer {
                         });
                         receiverThread.setOnLoggableEventListener(onLoggableEventListener);
                         receiverThread.setOnMotorStateMessageReceivedListener(onMotorStateMessageReceivedListener);
+                        receiverThread.setOnArmPositionMessageReceivedListener(onArmPositionMessageReceivedListener);
 
                         senderThread = new SenderThread(clientSocket, new OnThreadFinishedListener() {
                             @Override
@@ -184,6 +186,10 @@ public class ProjectRoverServer {
 
     public synchronized void setOnMotorStateMessageReceivedListener(OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener) {
         this.onMotorStateMessageReceivedListener = onMotorStateMessageReceivedListener;
+    }
+
+    public synchronized void setOnArmPositionMessageReceivedListener(OnArmPositionMessageReceivedListener onArmPositionMessageReceivedListener) {
+        this.onArmPositionMessageReceivedListener = onArmPositionMessageReceivedListener;
     }
 
     public synchronized void setOnLoggableEventListener(OnLoggableEventListener onLoggableEventListener) {

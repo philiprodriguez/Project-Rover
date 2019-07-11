@@ -1,9 +1,6 @@
 package xyz.philiprodriguez.projectroverserver;
 
 import android.Manifest;
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothSocket;
 import android.content.pm.PackageManager;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -44,8 +41,10 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import xyz.philiprodriguez.projectrovercommunications.ArmPositionMessage;
 import xyz.philiprodriguez.projectrovercommunications.GlobalLogger;
 import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
+import xyz.philiprodriguez.projectrovercommunications.OnArmPositionMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.OnLoggableEventListener;
 import xyz.philiprodriguez.projectrovercommunications.OnMotorStateMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.OnServerSettingsMessageReceivedListener;
@@ -57,7 +56,6 @@ import xyz.philiprodriguez.projectrovercommunications.ServerStateMessage;
 public class MainActivity extends AppCompatActivity {
     public static final String CLASS_IDENTIFIER = "MainActivity (Server)";
     private static final int CAMERA_PERMISSION_CODE = 315736;
-    public static final byte[] BLUETOOTH_START_SEQUENCE = new byte[]{'a', '8', 'f', 'e', 'J', '2', '9', 'p'};
     private static final int MAX_STATUS_TEXT_SIZE = 100;
 
     private ProjectRoverServer projectRoverServer;
@@ -68,6 +66,9 @@ public class MainActivity extends AppCompatActivity {
     private TextView txtStatusMessage;
     private Button btnStopServer;
     private TextureView txvCameraPreview;
+
+    // Bluetooth
+    BluetoothHandler bluetoothHandler;
 
     // Camera shit only
     CameraManager cameraManager;
@@ -87,19 +88,6 @@ public class MainActivity extends AppCompatActivity {
     // State send timer only
     Handler stateSendTimerHandler;
     Runnable stateSendTimerRunnble;
-
-    // Bluetooth shit only
-    BluetoothDevice bluetoothDevice;
-    BluetoothSocket bluetoothSocket;
-    Runnable bluetoothConnectRunnable;
-    Handler bluetoothConnectionHandler;
-    HandlerThread bluetoothConnectionHandlerThread;
-    final BlockingQueue<byte[]> bluetoothSendQueue = new LinkedBlockingQueue<>();
-    Thread bluetoothOutThread;
-    Thread bluetoothInThread;
-    final AtomicBoolean bluetoothDisconnectionHandled = new AtomicBoolean(false);
-
-    final AtomicInteger lastReceivedVoltageValue = new AtomicInteger(-1);
 
     private void setStatusAndLog(String message) {
         synchronized (statusTexts) {
@@ -133,19 +121,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         initComponents();
-    }
-
-    private void enqueueBluetoothMessage(byte[] everythingExceptStartSequence) {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try {
-            baos.write(BLUETOOTH_START_SEQUENCE);
-            baos.write(everythingExceptStartSequence);
-            bluetoothSendQueue.add(baos.toByteArray());
-            baos.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-            setStatusAndLog("Unexpected issue enqueueing Bluetooth message!");
-        }
     }
 
     private void initComponents() {
@@ -196,7 +171,13 @@ public class MainActivity extends AppCompatActivity {
         projectRoverServer.setOnMotorStateMessageReceivedListener(new OnMotorStateMessageReceivedListener() {
             @Override
             public void OnMotorStateMessageReceived(MotorStateMessage message) {
-                enqueueBluetoothMessage(new byte[]{'m', (byte)(message.getLeftForward()), (byte)(message.getLeftBackward()), (byte)(message.getRightForward()), (byte)(message.getRightBackward())});
+                bluetoothHandler.enqueueBluetoothMessage(new byte[]{'m', (byte)(message.getLeftForward()), (byte)(message.getLeftBackward()), (byte)(message.getRightForward()), (byte)(message.getRightBackward())});
+            }
+        });
+        projectRoverServer.setOnArmPositionMessageReceivedListener(new OnArmPositionMessageReceivedListener() {
+            @Override
+            public void OnArmPositionMessageReceived(ArmPositionMessage message) {
+
             }
         });
         projectRoverServer.setOnLoggableEventListener(new OnLoggableEventListener() {
@@ -222,7 +203,7 @@ public class MainActivity extends AppCompatActivity {
                     setStatusAndLog("Failed to set server settings related to headlight! " + e.getMessage());
                 }
 
-                enqueueBluetoothMessage(new byte[]{'s', (byte)(serverSettingsMessage.getServerSettings().getServoRotationAmount() + 5)});
+                bluetoothHandler.enqueueBluetoothMessage(new byte[]{'s', (byte)(serverSettingsMessage.getServerSettings().getServoRotationAmount() + 5)});
 
                 setStatusAndLog("Set server settings: " + serverSettingsMessage.getServerSettings().toString());
             }
@@ -275,7 +256,22 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
-        connectBluetooth();
+        bluetoothHandler = new BluetoothHandler("20:16:08:10:48:03", new OnBluetoothConnectedCallback() {
+            @Override
+            public void onBluetoothConnected(BluetoothHandler bluetoothHandler) {
+
+            }
+        }, new OnBluetoothDisconnectedCallback() {
+            @Override
+            public void onBluetoothDisconnected(BluetoothHandler handler) {
+
+            }
+        }, new OnLoggableEventListener() {
+            @Override
+            public void OnLoggableEvent(String message) {
+                setStatusAndLog(message);
+            }
+        });
 
         // All the stuff for starting the send state timer here
         stateSendTimerHandler = new Handler();
@@ -283,20 +279,25 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 if (projectRoverServer != null) {
-                    BatteryManager bm = (BatteryManager)getSystemService(BATTERY_SERVICE);
-                    int batLevel = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                    // First request from the teensy our robot's battery level!
+                    bluetoothHandler.addOnVoltageValueReceivedCallback(new OnVoltageValueReceivedCallback() {
+                        @Override
+                        public void onVoltageValueReceived(int voltageValue) {
+                            // Get tablet's battery level too
+                            BatteryManager bm = (BatteryManager)getSystemService(BATTERY_SERVICE);
+                            int batLevel = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
 
-                    // Magic based on Physics 2 for the voltage divider & regression to AGM charge chart
-                    final double x = lastReceivedVoltageValue.get() - 570.0;
-                    final double primaryBatLevel = Math.pow(a*Math.pow(x, b)+c*Math.pow(x, 5)+d*Math.pow(x,3)+g*x+h*x, 2) * 100.0;
-                    GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "primaryBatLevel is " + primaryBatLevel + " from x of " + x);
-                    final int primaryBatLevelInt = Math.min((int)Math.round(primaryBatLevel), 100);
+                            // Magic based on Physics 2 for the voltage divider & regression to AGM charge chart
+                            final double x = voltageValue - 560.0;
+                            final double primaryBatLevel = Math.pow(a*Math.pow(x, b)+c*Math.pow(x, 5)+d*Math.pow(x,3)+g*x+h*x, 2) * 100.0;
+                            GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.INFO, "primaryBatLevel is " + primaryBatLevel + " from x of " + x);
+                            final int primaryBatLevelInt = Math.min((int)Math.round(primaryBatLevel), 100);
 
-                    projectRoverServer.doEnqueueServerStateMessage(new ServerStateMessage(System.currentTimeMillis(), batLevel, primaryBatLevelInt));
+                            projectRoverServer.doEnqueueServerStateMessage(new ServerStateMessage(System.currentTimeMillis(), batLevel, primaryBatLevelInt));
+                        }
+                    });
+                    bluetoothHandler.enqueueBluetoothMessage(new byte[]{'v'});
                 }
-
-                // Also tell Teensy to send us back updated voltage info for next time
-                enqueueBluetoothMessage(new byte[]{'v'});
 
                 stateSendTimerHandler.postDelayed(stateSendTimerRunnble, 1000);
             }
@@ -320,7 +321,7 @@ public class MainActivity extends AppCompatActivity {
             stateSendTimerRunnble = null;
         }
 
-        disconnectBluetoothAndCleanUp();
+        bluetoothHandler.recycle();
 
         if (projectRoverServer != null) {
             stopServer();
@@ -330,224 +331,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-    }
-
-    private void connectBluetooth() {
-        // Open bluetooth handler
-        bluetoothConnectionHandlerThread = new HandlerThread("Bluetooth Connection Handler Thread");
-        bluetoothConnectionHandlerThread.start();
-        bluetoothConnectionHandler = new Handler(bluetoothConnectionHandlerThread.getLooper());
-
-        // Get and connect
-        if (getBluetoothDevice()) {
-            connectBluetoothDevice();
-        }
-    }
-
-    private boolean getBluetoothDevice() {
-        setStatusAndLog("Getting Bluetooth device..");
-        BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        if (bluetoothAdapter != null) {
-            if (bluetoothAdapter.isEnabled()) {
-                setStatusAndLog("Bluetooth is already enabled on the device...");
-                Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
-                for (BluetoothDevice bluetoothDevice : pairedDevices) {
-                    String deviceName = bluetoothDevice.getName();
-                    String deviceMAC = bluetoothDevice.getAddress();
-
-                    // TODO: make this dynamic
-                    if (deviceMAC.equals("20:16:08:10:48:03")) {
-                        setStatusAndLog("Found device " + deviceName + " with MAC " + deviceMAC);
-                        this.bluetoothDevice = bluetoothDevice;
-                        break;
-                    }
-                }
-                if (this.bluetoothDevice != null) {
-                    return true;
-                } else {
-                    setStatusAndLog("Failed to find suitable Bluetooth device! Make sure it is paired!");
-                    return false;
-                }
-            } else {
-                setStatusAndLog("Bluetooth is not enabled! Please enable bluetooth and restart the application...");
-                return false;
-            }
-        } else {
-            setStatusAndLog("Bluetooth is not supported on this device!");
-            return false;
-        }
-    }
-
-    private void connectBluetoothDevice() {
-        setStatusAndLog("Attempting to connect to Bluetooth device...");
-        try {
-            bluetoothSocket = bluetoothDevice.createRfcommSocketToServiceRecord(UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
-            bluetoothConnectRunnable = new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        bluetoothSocket.connect();
-                        // Successful connection! Make retry possible again!
-                        bluetoothDisconnectionHandled.set(false);
-                        openBluetoothOutThread();
-                        openBluetoothInThread();
-                        setStatusAndLog("Bluetooth socket connected!");
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        setStatusAndLog("Failed to connect the Bluetooth socket! Retrying...");
-                        bluetoothConnectionHandler.post(bluetoothConnectRunnable);
-                    }
-                }
-            };
-            bluetoothConnectionHandler.post(bluetoothConnectRunnable);
-        } catch (IOException e) {
-            e.printStackTrace();
-            setStatusAndLog("Failed to create socket for Bluetooth device!");
-        }
-    }
-
-    private void openBluetoothInThread() {
-        setStatusAndLog("Opening Bluetooth in thread...");
-        bluetoothInThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    setStatusAndLog("Bluetooth in thread started!");
-                    InputStream inputStream = bluetoothSocket.getInputStream();
-                    int readByte = -1;
-                    outer: while (!Thread.currentThread().isInterrupted()) {
-                        // Read start sequence
-                        for (int i = 0; i < BLUETOOTH_START_SEQUENCE.length; i++) {
-                            readByte = inputStream.read();
-                            if (readByte < 0) {
-                                break outer;
-                            }
-                            if (readByte != BLUETOOTH_START_SEQUENCE[i]) {
-                                continue outer;
-                            }
-                        }
-
-                        // Start sequence OK
-                        readByte = inputStream.read();
-                        if (readByte < 0) {
-                            break outer;
-                        }
-                        byte messageType = (byte)readByte;
-
-                        if (messageType == 'v') {
-                            // Voltage value int
-                            ByteBuffer byteBuffer = ByteBuffer.allocate(4);
-                            for (int i = 0; i < 4; i++) {
-                                readByte = inputStream.read();
-                                if (readByte < 0) {
-                                    break outer;
-                                }
-                                byteBuffer.put((byte)readByte);
-                            }
-                            byteBuffer.rewind();
-                            int voltageValue = byteBuffer.getInt();
-                            lastReceivedVoltageValue.set(voltageValue);
-                        } else {
-                            setStatusAndLog("Bluetooth received message of unknown type: " + messageType);
-                        }
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } finally {
-                    setStatusAndLog("Bluetooth in thread closing!");
-
-                    if (!Thread.currentThread().isInterrupted()) {
-                        handleBluetoothIssue();
-                    }
-                }
-            }
-        });
-        bluetoothInThread.start();
-    }
-
-    private void openBluetoothOutThread() {
-        setStatusAndLog("Opening Bluetooth out thread...");
-        bluetoothOutThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    setStatusAndLog("Bluetooth out thread started!");
-                    while (!Thread.currentThread().isInterrupted()) {
-                        try {
-                            byte[] bytesToSend = bluetoothSendQueue.take();
-                            //setStatusAndLog("Writing out bytes: " + Arrays.toString(bytesToSend));
-                            bluetoothSocket.getOutputStream().write(bytesToSend);
-                            bluetoothSocket.getOutputStream().flush();
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            setStatusAndLog("Bluetooth IO exception! " + e.getMessage());
-                            break;
-                        }
-                    }
-                } catch (InterruptedException e) {
-                    setStatusAndLog("Bluetooth out thread interrupted!");
-
-                    // Re-establish interrupted flag, since the thrown InterruptedException makes the thread no longer interrupted!
-                    Thread.currentThread().interrupt();
-                } finally {
-                    setStatusAndLog("Bluetooth out thread closing!");
-
-                    // Try to reconnect Bluetooth!
-                    if (!Thread.currentThread().isInterrupted()) {
-                        handleBluetoothIssue();
-                    }
-                }
-            }
-        });
-        bluetoothOutThread.start();
-    }
-
-    private void disconnectBluetoothAndCleanUp() {
-        if (bluetoothOutThread != null) {
-            setStatusAndLog("Attempting to interrupt bluetoothOutThread!");
-            bluetoothOutThread.interrupt();
-        } else {
-            setStatusAndLog("Cannot interrupt bluetoothOutThread since it is null!");
-        }
-
-        if (bluetoothInThread != null) {
-            setStatusAndLog("Attempting to interrupt bluetoothInThread!");
-            bluetoothInThread.interrupt();
-        } else {
-            setStatusAndLog("Cannot interrupt bluetoothInThread since it is null!");
-        }
-
-        setStatusAndLog("Closing Bluetooth socket...");
-        if (bluetoothSocket != null) {
-            try {
-                bluetoothSocket.close();
-                this.bluetoothDevice = null;
-                setStatusAndLog("Bluetooth socket closed!");
-            } catch (IOException e) {
-                setStatusAndLog("Failed to close Bluetooth socket!");
-                e.printStackTrace();
-            }
-        }
-
-        if (bluetoothConnectionHandler != null) {
-            bluetoothConnectionHandlerThread.quitSafely();
-            bluetoothConnectionHandlerThread = null;
-            bluetoothConnectionHandler = null;
-        }
-    }
-
-    // Disconnect bluetooth and try to reconnect it, knowing that this may be called multiple times from one disconnection event.
-    private void handleBluetoothIssue() {
-        setStatusAndLog("Handling Bluetooth disconnection issue!");
-        if (bluetoothDisconnectionHandled.getAndSet(true)) {
-            // Already handled
-            return;
-        }
-
-        // Reconnect
-        setStatusAndLog("Attempting to re-establish Bluetooth connection!");
-        disconnectBluetoothAndCleanUp();
-        connectBluetooth();
     }
 
     private void openCameraBackgroundHandler() {

@@ -10,19 +10,66 @@
   Update May 29, 2019
 
   Add ability to read battery level and send it back periodically to the Android device.
- */
+
+  Update July 8, 2019
+
+  Add ability to control new robotic arm of 3 servos.
+*/
 
 #include <Servo.h>
 
 int pinLED = 13;
 int pinVoltageRead = A0;
-int pinServo = 16;
+int pinServoTilt = 16;
 int pinLeftForward = 23;
 int pinLeftBackward = 22;
 int pinRightForward = 21;
 int pinRightBackward = 20;
+int pinServoArmBase = A3;
+int pinServoArmOne = A4;
+int pinServoArmTwo = A5;
 
 Servo servoTilt;
+
+Servo servoArmBase;
+float servoArmBaseLastRadians = 0.0;
+Servo servoArmOne;
+float servoArmOneLastRadians = 0.0;
+Servo servoArmTwo;
+float servoArmTwoLastRadians = 0.0;
+
+// Squish the range [0, maxRadians] radians into [544, 2400]
+int convertRadianstoMicroseconds(float angle, float maxRadians) {
+  float percentage = angle/maxRadians;
+  int us = (int)(544.0+(1856.0*percentage));
+  // Clip to prevent overdriving the servo
+  us = max(544, us);
+  us = min(2400, us);
+  return us;
+}
+
+// Account for the zero shift amount so we can support some negative angles
+// Limit range from -20 deg to 220 deg
+void setServoArmBase(float thetaRadians) {
+  thetaRadians = min(thetaRadians, 3.8397);
+  thetaRadians = max(thetaRadians, -0.3491);
+  servoArmBaseLastRadians = thetaRadians;
+  servoArmBase.writeMicroseconds(convertRadianstoMicroseconds(thetaRadians+(0.5306), 4.3074));
+}
+
+void setServoArmOne(float thetaRadians) {
+  thetaRadians = min(thetaRadians, 2.2689); // 130 deg
+  thetaRadians = max(thetaRadians, -0.1309); // -7.5 deg
+  servoArmOneLastRadians = thetaRadians;
+  servoArmOne.writeMicroseconds(convertRadianstoMicroseconds(2.49582-(thetaRadians+0.1309), 4.3459));
+}
+
+void setServoArmTwo(float thetaRadians) {
+  thetaRadians = min(thetaRadians, 5.218); // 299 deg
+  thetaRadians = max(thetaRadians, 0.7854); // 45 deg
+  servoArmTwoLastRadians = thetaRadians;
+  servoArmTwo.writeMicroseconds(convertRadianstoMicroseconds(thetaRadians-0.7854, 4.4331));
+}
 
 void setup() {
   pinMode(pinLED, OUTPUT);
@@ -41,7 +88,15 @@ void setup() {
   analogWriteFrequency(pinLeftForward, 22000);
 
   // Servo initialization
-  servoTilt.attach(16);
+  servoTilt.attach(pinServoTilt);
+  servoArmBase.attach(pinServoArmBase);
+  setServoArmBase(1.57079632);
+  
+  servoArmOne.attach(pinServoArmOne);
+  setServoArmOne(2.2689);
+  
+  servoArmTwo.attach(pinServoArmTwo);
+  setServoArmTwo(0.7853);  
   
   Serial.begin(9600);
   Serial3.begin(9600);
@@ -65,6 +120,10 @@ int nextSerial3Byte() {
     // Do nothing!
   }
   return readVal;
+}
+
+float parseFloatFromBytes(byte * bytes) {
+  return 1.0;
 }
 
 void loop() {
@@ -156,6 +215,27 @@ void loop() {
       Serial.print(" ");
     }
     Serial3.write(buf, sizeof(buf));
+  } else if (opcode == 'a') {
+    // Arm set
+    Serial.println("Opcode was for arm set...");
+    byte bufBase[4];
+    for (int i = 0; i < 4; i++) {
+      bufBase[i] = nextSerial3Byte();
+    }
+    byte bufOne[4];
+    for (int i = 0; i < 4; i++) {
+      bufOne[i] = nextSerial3Byte();
+    }
+    byte bufTwo[4];
+    for (int i = 0; i < 4; i++) {
+      bufTwo[i] = nextSerial3Byte();
+    }
+    float baseRad = parseFloatFromBytes(bufBase);
+    float oneRad = parseFloatFromBytes(bufOne);
+    float twoRad = parseFloatFromBytes(bufTwo);
+    setServoArmBase(baseRad);
+    setServoArmOne(oneRad);
+    setServoArmTwo(twoRad);
   } else {
     Serial.println("Illegal opcode!");
     return;

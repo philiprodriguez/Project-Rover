@@ -20,6 +20,7 @@ public class ReceiverThread extends Thread {
     private volatile OnFrameReceivedListener onFrameReceivedListener;
     private volatile OnLoggableEventListener onLoggableEventListener;
     private volatile OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener;
+    private volatile OnArmPositionMessageReceivedListener onArmPositionMessageReceivedListener;
     private volatile OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener;
     private volatile OnServerStateMessageReceivedListener onServerStateMessageReceivedListener;
 
@@ -82,6 +83,10 @@ public class ReceiverThread extends Thread {
                     MotorStateMessage message = new MotorStateMessage().fromBytes(messageBytes);
                     if (onMotorStateMessageReceivedListener != null)
                         onMotorStateMessageReceivedListener.OnMotorStateMessageReceived(message);
+                } else if (startCode == new ArmPositionMessage().getStartCode()) {
+                    ArmPositionMessage message = new ArmPositionMessage().fromBytes(messageBytes);
+                    if (onArmPositionMessageReceivedListener != null)
+                        onArmPositionMessageReceivedListener.OnArmPositionMessageReceived(message);
                 } else if (startCode == new ServerSettingsMessage().getStartCode()) {
                     ServerSettingsMessage message = new ServerSettingsMessage().fromBytes(messageBytes);
                     if (onServerSettingsMessageReceivedListener != null)
@@ -116,6 +121,10 @@ public class ReceiverThread extends Thread {
 
     public void setOnMotorStateMessageReceivedListener(OnMotorStateMessageReceivedListener onMotorStateMessageReceivedListener) {
         this.onMotorStateMessageReceivedListener = onMotorStateMessageReceivedListener;
+    }
+
+    public void setOnArmPositionMessageReceivedListener(OnArmPositionMessageReceivedListener onArmPositionMessageReceivedListener) {
+        this.onArmPositionMessageReceivedListener = onArmPositionMessageReceivedListener;
     }
 
     public void setOnServerSettingsMessageReceivedListener(OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener) {
