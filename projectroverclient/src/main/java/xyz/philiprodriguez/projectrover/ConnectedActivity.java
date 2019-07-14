@@ -398,10 +398,12 @@ public class ConnectedActivity extends AppCompatActivity {
         // Send to server if distance enough
         double dist = Math.sqrt(Math.pow(armXf-lastX, 2.0)+Math.pow(armYf-lastY, 2.0)+Math.pow(armZf-lastZ, 2.0));
         if (force || dist > armEpspilon) {
-            projectRoverClient.doEnqueueArmPositionMessage(new ArmPositionMessage(System.currentTimeMillis(), armXf, armYf, armZf));
-            lastX = armXf;
-            lastY = armYf;
-            lastZ = armZf;
+            if (projectRoverClient != null) {
+                projectRoverClient.doEnqueueArmPositionMessage(new ArmPositionMessage(System.currentTimeMillis(), armXf, armYf, armZf));
+                lastX = armXf;
+                lastY = armYf;
+                lastZ = armZf;
+            }
         }
     }
 

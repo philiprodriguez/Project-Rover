@@ -79,26 +79,27 @@
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
         android:layout_marginBottom="32dp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/tpvArmZ_Connected"
         custom:dimensions="both"
         custom:minimumChange="5.0"
-        custom:toolRadius="32dp"
-        android:visibility="gone"/>
+        custom:requiredAspectRatio="2.0"
+        custom:toolRadius="32dp" />
 
     <xyz.philiprodriguez.projectrover.TrackpadView
         android:id="@+id/tpvArmZ_Connected"
         android:layout_width="64dp"
-        android:layout_height="200dp"
+        android:layout_height="0dp"
         android:layout_marginStart="8dp"
-        android:layout_marginBottom="32dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/tpvArmXY_Connected"
         app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/tpvArmXY_Connected"
         custom:dimensions="y"
         custom:minimumChange="5.0"
-        custom:toolRadius="32dp"
-        android:visibility="gone"/>
+        custom:toolRadius="32dp" />
 
     <TextView
         android:id="@+id/txtArmXYZ_Connected"

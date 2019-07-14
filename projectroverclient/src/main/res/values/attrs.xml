@@ -11,5 +11,6 @@
         <attr name="toolOutlineColor" format="color"/>
         <attr name="toolInsideColor" format="color"/>
         <attr name="minimumChange" format="float"/>
+        <attr name="requiredAspectRatio" format="float"/>
     </declare-styleable>
 </resources>

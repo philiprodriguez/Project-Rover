@@ -19,6 +19,7 @@ public class TrackpadView extends View {
     private final int toolInsideColor;
     private final int trackpadColor;
     private final float minimumChange;
+    private final float requiredAspectRatio;
 
     private final Paint trackpadPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint toolOutlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -43,6 +44,7 @@ public class TrackpadView extends View {
             toolOutlineColor = typedArray.getColor(R.styleable.TrackpadView_toolOutlineColor, 0xff000000);
             toolInsideColor = typedArray.getColor(R.styleable.TrackpadView_toolInsideColor, 0xff777777);
             minimumChange = typedArray.getFloat(R.styleable.TrackpadView_minimumChange, 0.0f);
+            requiredAspectRatio = typedArray.getFloat(R.styleable.TrackpadView_requiredAspectRatio, -1.0f);
         } finally {
             typedArray.recycle();
         }
@@ -127,7 +129,8 @@ public class TrackpadView extends View {
         } else if (widthMode == MeasureSpec.UNSPECIFIED) {
             chosenWidth = (int)(0.75*widthSize);
         } else {
-            throw new IllegalArgumentException("Unknown width mode supplied to TrackpadView!");
+            System.err.println("Unknown width mode supplied to TrackpadView: " + widthMode + " (Size " + widthSize + ")");
+            chosenWidth = widthSize;
         }
 
         if (heightMode == MeasureSpec.EXACTLY) {
@@ -137,7 +140,21 @@ public class TrackpadView extends View {
         } else if (widthMode == MeasureSpec.UNSPECIFIED) {
             chosenHeight = (int)(0.75*heightSize);
         } else {
-            throw new IllegalArgumentException("Unknown height mode supplied to TrackpadView!");
+            System.err.println("Unknown height mode supplied to TrackpadView: " + heightMode + " (Size " + heightSize + ")");
+            chosenHeight = heightSize;
+        }
+
+        if (requiredAspectRatio > 0.0f) {
+            // Width must be requiredAspectRation*height! We can decrease width or height as necessary!
+            if (chosenWidth < requiredAspectRatio*chosenHeight) {
+                // We must reduce height!
+                chosenHeight = (int)Math.ceil(chosenWidth/requiredAspectRatio);
+            } else if (chosenWidth > requiredAspectRatio*chosenHeight) {
+                // We must reduce width!
+                chosenWidth = (int)Math.ceil(requiredAspectRatio*chosenHeight);
+            } else {
+                // We are good!
+            }
         }
 
         setMeasuredDimension(chosenWidth, chosenHeight);

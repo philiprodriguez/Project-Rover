@@ -23,7 +23,7 @@ public final class R {
         public static final int fontStyle = 0x7f020083;
         public static final int fontVariationSettings = 0x7f020084;
         public static final int fontWeight = 0x7f020085;
-        public static final int ttcIndex = 0x7f020142;
+        public static final int ttcIndex = 0x7f020143;
     }
     public static final class color {
         private color() {}
@@ -152,7 +152,7 @@ public final class R {
         public static final int FontFamily_fontProviderFetchTimeout = 3;
         public static final int FontFamily_fontProviderPackage = 4;
         public static final int FontFamily_fontProviderQuery = 5;
-        public static final int[] FontFamilyFont = { 0x1010532, 0x1010533, 0x101053f, 0x101056f, 0x1010570, 0x7f02007b, 0x7f020083, 0x7f020084, 0x7f020085, 0x7f020142 };
+        public static final int[] FontFamilyFont = { 0x1010532, 0x1010533, 0x101053f, 0x101056f, 0x1010570, 0x7f02007b, 0x7f020083, 0x7f020084, 0x7f020085, 0x7f020143 };
         public static final int FontFamilyFont_android_font = 0;
         public static final int FontFamilyFont_android_fontWeight = 1;
         public static final int FontFamilyFont_android_fontStyle = 2;

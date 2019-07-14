@@ -12,6 +12,18 @@ public class ArmDriver {
     private final double l_2;
     private final int searchIterations;
 
+    //TODO: Increase range AFTER replacing the first ternary search
+    private static final double thetaBMin = 0.0;
+    private static final double thetaBMax = FastMath.PI;
+
+    //TODO: Increase range to -7.5 to 130 deg AFTER replacing the first ternary search
+    private static final double thetaOneMin = 0.0;
+    private static final double thetaOneMax = Math.PI/2.0;
+
+    private static final double thetaTwoMin = 0.7854;
+    private static final double thetaTwoMax = 5.218;
+
+
     /**
      * Initialize an instance of ArmDriver with an arm's parameters.
      *
@@ -72,8 +84,8 @@ public class ArmDriver {
         double[] result1 = new double[3];
 
         // Ternary search on thetaB, 0 to 180
-        double tbmax = FastMath.PI;
-        double tbmin = 0;
+        double tbmax = thetaBMax;
+        double tbmin = thetaBMin;
 
         // TODO: remove this first level of ternary search of thetaB, assume
         // TODO: angle between x axis and the target point...
@@ -131,10 +143,10 @@ public class ArmDriver {
         double splitTheta = FastMath.asin(z_t/(FastMath.sqrt(x_t*x_t+y_t*y_t+z_t*z_t)));
 
         // Then we want to search above and below splitTheta
-        double topmax = Math.PI/2.0f; //TODO: Increase range to -7.5 to 130 deg AFTER replacing the first ternary search
+        double topmax = thetaOneMax;
         double topmin = splitTheta;
         double botmax = splitTheta;
-        double botmin = 0.0f;
+        double botmin = thetaOneMin;
 
         // Once again searchIterations iterations max
         double topmid1 = -1;
@@ -209,8 +221,8 @@ public class ArmDriver {
     private double[] distanceThetaOne(double x_t, double y_t, double z_t, double thetaB, double thetaOne) {
         double[] result3 = new double[2];
 
-        double ttmax = 5.218f;
-        double ttmin = 0.7854f;
+        double ttmax = thetaTwoMax;
+        double ttmin = thetaTwoMin;
 
         double mid1 = -1;
         double mid2 = -1;

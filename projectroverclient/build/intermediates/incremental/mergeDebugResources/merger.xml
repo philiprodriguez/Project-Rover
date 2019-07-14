@@ -2679,6 +2679,7 @@
         <attr format="color" name="toolOutlineColor"/>
         <attr format="color" name="toolInsideColor"/>
         <attr format="float" name="minimumChange"/>
+        <attr format="float" name="requiredAspectRatio"/>
     </declare-styleable></file><file path="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/src/main/res/values/styles.xml" qualifiers=""><style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
         
         <item name="colorPrimary">@color/colorPrimary</item>
@@ -3433,6 +3434,7 @@
         <attr format="color" name="toolOutlineColor"/>
         <attr format="color" name="toolInsideColor"/>
         <attr format="float" name="minimumChange"/>
+        <attr format="float" name="requiredAspectRatio"/>
     </declare-styleable><declare-styleable name="SwitchCompat">
         
         <attr name="android:thumb"/>
