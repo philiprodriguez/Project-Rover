@@ -244,7 +244,6 @@ public class BluetoothHandler {
             baos.write(BLUETOOTH_START_SEQUENCE);
             baos.write(everythingExceptStartSequence);
             bluetoothSendQueue.add(baos.toByteArray());
-            onLoggableEventListener.OnLoggableEvent("Enqueued message for " + this + "; " + bluetoothSendQueue.size());
             baos.close();
         } catch (IOException e) {
             throw new IllegalStateException("Failure while writing to ByteArrayOutputStream: " + e.getMessage());

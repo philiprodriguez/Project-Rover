@@ -167,6 +167,10 @@ public class ProjectRoverClient {
         senderThread.enqueueStrict(serverSettingsMessage);
     }
 
+    public void doEnqueueArmPositionMessage(ArmPositionMessage armPositionMessage) {
+        senderThread.enqueueStrict(armPositionMessage);
+    }
+
     public ServerSettings getPerceivedServerSettings() {
         return perceivedServerSettings;
     }

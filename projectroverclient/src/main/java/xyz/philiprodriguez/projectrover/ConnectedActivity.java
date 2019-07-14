@@ -7,10 +7,13 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.view.DragEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
@@ -23,7 +26,9 @@ import android.support.v7.widget.Toolbar;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
+import xyz.philiprodriguez.projectrovercommunications.ArmPositionMessage;
 import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
 import xyz.philiprodriguez.projectrovercommunications.OnClientConnectionKilledListener;
 import xyz.philiprodriguez.projectrovercommunications.OnFrameReceivedListener;
@@ -42,6 +47,12 @@ public class ConnectedActivity extends AppCompatActivity {
     private TextView txtHUDInfo;
     private Button btnMenu;
 
+    private TrackpadView tpvArmXY;
+    private TrackpadView tpvArmZ;
+    private TextView txtArmXYZ;
+    private float armXf, armYf, armZf;
+    private AtomicLong lastArmUpdate = new AtomicLong(0);
+
     private volatile int port;
     private volatile String host;
 
@@ -49,6 +60,11 @@ public class ConnectedActivity extends AppCompatActivity {
     private volatile Handler clientConnectorHandler;
     private volatile HandlerThread clientConnectorHandlerThread;
     private volatile Runnable clientConnectorRunnable;
+
+    private final double armEpspilon = 0.003; // Require change of 3 mm to send
+    private float lastX = 0.0f;
+    private float lastY = 0.0f;
+    private float lastZ = 0.0f;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -192,6 +208,9 @@ public class ConnectedActivity extends AppCompatActivity {
         sebLeftRight = findViewById(R.id.sebLeftRight);
         txtHUDInfo = findViewById(R.id.txtHUDInfo_Connected);
         btnMenu = findViewById(R.id.btnMenu_Connected);
+        tpvArmXY = findViewById(R.id.tpvArmXY_Connected);
+        tpvArmZ = findViewById(R.id.tpvArmZ_Connected);
+        txtArmXYZ = findViewById(R.id.txtArmXYZ_Connected);
 
         btnMenu.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -215,6 +234,27 @@ public class ConnectedActivity extends AppCompatActivity {
                     }
                 });
                 popupMenu.getMenu().getItem(1).setOnMenuItemClickListener(new MenuItem.OnMenuItemClickListener() {
+                    @Override
+                    public boolean onMenuItemClick(MenuItem item) {
+                        if (tpvArmXY.getVisibility() == View.VISIBLE) {
+                            tpvArmZ.setVisibility(View.GONE);
+                            tpvArmXY.setVisibility(View.GONE);
+                            txtArmXYZ.setVisibility(View.GONE);
+
+                            sebLeftRight.setVisibility(View.VISIBLE);
+                            sebUpDown.setVisibility(View.VISIBLE);
+                        } else {
+                            tpvArmZ.setVisibility(View.VISIBLE);
+                            tpvArmXY.setVisibility(View.VISIBLE);
+                            txtArmXYZ.setVisibility(View.VISIBLE);
+
+                            sebLeftRight.setVisibility(View.GONE);
+                            sebUpDown.setVisibility(View.GONE);
+                        }
+                        return true;
+                    }
+                });
+                popupMenu.getMenu().getItem(2).setOnMenuItemClickListener(new MenuItem.OnMenuItemClickListener() {
                     @Override
                     public boolean onMenuItemClick(MenuItem item) {
                         showSettingsDialog();
@@ -275,6 +315,94 @@ public class ConnectedActivity extends AppCompatActivity {
                 }
             }
         });
+
+        tpvArmXY.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                if (tpvArmXY.getWidth() == 0) {
+                    System.out.println("Ignored zero call...");
+                    return;
+                }
+                tpvArmXY.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                tpvArmXY.setX(tpvArmXY.getWidth()/2.0f);
+                tpvArmXY.setY(tpvArmXY.getHeight()/2.0f);
+                armXf = 0f;
+                armYf = 0.15f;
+                armZf = 0.15f;
+                sendArmUpdate(true);
+
+                tpvArmXY.setOnTrackpadPositionChangedListener(new OnTrackpadPositionChangedListener() {
+                    @Override
+                    public void onTrackpadPositionChanged(float x, float y) {
+                        // Get x and y as percentages of half lengths with (0,0) at bottom center
+                        float xp = ((x-(tpvArmXY.getWidth()/2.0f))/tpvArmXY.getWidth())*2.0f;
+                        float yp = (tpvArmXY.getHeight()-y)/tpvArmXY.getHeight();
+
+                        // Now scale to meters, where max is 300mm
+                        xp = 0.3f*xp;
+                        yp = 0.3f*yp;
+
+                        armXf = xp;
+                        armYf = yp;
+
+                        sendArmUpdate(false);
+                    }
+                });
+            }
+        });
+        tpvArmZ.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                if (tpvArmZ.getWidth() == 0) {
+                    System.out.println("Ignored zero call...");
+                    return;
+                }
+                tpvArmZ.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                tpvArmZ.setY(tpvArmZ.getHeight()/2.0f);
+
+                tpvArmZ.setOnTrackpadPositionChangedListener(new OnTrackpadPositionChangedListener() {
+                    @Override
+                    public void onTrackpadPositionChanged(float x, float y) {
+                        // Get z as percentage
+                        float zp = (tpvArmZ.getHeight()-y)/tpvArmZ.getHeight();
+                        zp = 0.3f*zp;
+
+                        armZf = zp;
+
+                        sendArmUpdate(false);
+                    }
+                });
+            }
+        });
+    }
+
+    private void sendArmUpdate(boolean force) {
+        if (!force && System.currentTimeMillis()-lastArmUpdate.get() < 50) {
+            // Ignore
+            return;
+        } else {
+            lastArmUpdate.set(System.currentTimeMillis());
+        }
+
+        // Update string
+        StringBuilder sb = new StringBuilder();
+        sb.append("(");
+        sb.append(armXf);
+        sb.append(", ");
+        sb.append(armYf);
+        sb.append(", ");
+        sb.append(armZf);
+        sb.append(")");
+        txtArmXYZ.setText(sb.toString());
+
+        // Send to server if distance enough
+        double dist = Math.sqrt(Math.pow(armXf-lastX, 2.0)+Math.pow(armYf-lastY, 2.0)+Math.pow(armZf-lastZ, 2.0));
+        if (force || dist > armEpspilon) {
+            projectRoverClient.doEnqueueArmPositionMessage(new ArmPositionMessage(System.currentTimeMillis(), armXf, armYf, armZf));
+            lastX = armXf;
+            lastY = armYf;
+            lastZ = armZf;
+        }
     }
 
     private void showSettingsDialog() {

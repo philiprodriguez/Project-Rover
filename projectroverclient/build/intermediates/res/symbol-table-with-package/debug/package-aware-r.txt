@@ -117,6 +117,7 @@ attr defaultQueryHint
 attr dialogCornerRadius
 attr dialogPreferredPadding
 attr dialogTheme
+attr dimensions
 attr displayOptions
 attr divider
 attr dividerHorizontal
@@ -234,6 +235,7 @@ attr logo
 attr logoDescription
 attr maxButtonHeight
 attr measureWithLargestChild
+attr minimumChange
 attr multiChoiceItemLayout
 attr navigationContentDescription
 attr navigationIcon
@@ -319,6 +321,9 @@ attr titleMargins
 attr titleTextAppearance
 attr titleTextColor
 attr titleTextStyle
+attr toolInsideColor
+attr toolOutlineColor
+attr toolRadius
 attr toolbarNavigationButtonStyle
 attr toolbarStyle
 attr tooltipForegroundColor
@@ -327,6 +332,7 @@ attr tooltipText
 attr track
 attr trackTint
 attr trackTintMode
+attr trackpadColor
 attr ttcIndex
 attr viewInflaterClass
 attr voiceIcon
@@ -382,6 +388,8 @@ color bright_foreground_material_light
 color button_material_dark
 color button_material_light
 color colorAccent
+color colorArmXY
+color colorArmZ
 color colorPrimary
 color colorPrimaryDark
 color dim_foreground_disabled_material_dark
@@ -652,6 +660,7 @@ id META
 id SHIFT
 id SYM
 id actSettings
+id actToggleArmControl
 id actToggleHeadlight
 id action_bar
 id action_bar_activity_content
@@ -680,6 +689,7 @@ id async
 id barrier
 id beginning
 id blocking
+id both
 id bottom
 id btnConnect_Main
 id btnMenu_Connected
@@ -803,6 +813,9 @@ id title_template
 id tlb_Main
 id top
 id topPanel
+id tpvArmXY_Connected
+id tpvArmZ_Connected
+id txtArmXYZ_Connected
 id txtHUDInfo_Connected
 id uniform
 id up
@@ -810,6 +823,8 @@ id useLogo
 id withText
 id wrap
 id wrap_content
+id x
+id y
 integer abc_config_activityDefaultDur
 integer abc_config_activityShortDur
 integer cancel_button_image_alpha
@@ -1293,6 +1308,7 @@ styleable StateListDrawableItem android_drawable
 styleable SwitchCompat android_textOn android_textOff android_thumb showText splitTrack switchMinWidth switchPadding switchTextAppearance thumbTextPadding thumbTint thumbTintMode track trackTint trackTintMode
 styleable TextAppearance android_textSize android_typeface android_textStyle android_textColor android_textColorHint android_textColorLink android_shadowColor android_shadowDx android_shadowDy android_shadowRadius android_fontFamily fontFamily textAllCaps
 styleable Toolbar android_gravity android_minHeight buttonGravity collapseContentDescription collapseIcon contentInsetEnd contentInsetEndWithActions contentInsetLeft contentInsetRight contentInsetStart contentInsetStartWithNavigation logo logoDescription maxButtonHeight navigationContentDescription navigationIcon popupTheme subtitle subtitleTextAppearance subtitleTextColor title titleMargin titleMarginBottom titleMarginEnd titleMarginStart titleMarginTop titleMargins titleTextAppearance titleTextColor
+styleable TrackpadView dimensions minimumChange toolInsideColor toolOutlineColor toolRadius trackpadColor
 styleable View android_theme android_focusable paddingEnd paddingStart theme
 styleable ViewBackgroundHelper android_background backgroundTint backgroundTintMode
 styleable ViewStubCompat android_id android_layout android_inflatedId

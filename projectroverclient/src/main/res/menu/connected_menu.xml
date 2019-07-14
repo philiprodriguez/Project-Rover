@@ -8,6 +8,12 @@
         />
 
     <item
+        android:id="@+id/actToggleArmControl"
+        android:title="Toggle Arm Control"
+        app:showAsAction="never"
+        />
+
+    <item
         android:id="@+id/actSettings"
         android:title="Settings"
         app:showAsAction="never"

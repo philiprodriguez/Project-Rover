@@ -3,6 +3,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    xmlns:custom="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#222222">
@@ -69,5 +70,43 @@
         android:text="Menu"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
+
+
+    <xyz.philiprodriguez.projectrover.TrackpadView
+        android:id="@+id/tpvArmXY_Connected"
+        android:layout_width="0dp"
+        android:layout_height="200dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="32dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/tpvArmZ_Connected"
+        custom:dimensions="both"
+        custom:minimumChange="5.0"
+        custom:toolRadius="32dp"
+        android:visibility="gone"/>
+
+    <xyz.philiprodriguez.projectrover.TrackpadView
+        android:id="@+id/tpvArmZ_Connected"
+        android:layout_width="64dp"
+        android:layout_height="200dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="32dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        custom:dimensions="y"
+        custom:minimumChange="5.0"
+        custom:toolRadius="32dp"
+        android:visibility="gone"/>
+
+    <TextView
+        android:id="@+id/txtArmXYZ_Connected"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="TextView"
+        app:layout_constraintStart_toStartOf="@+id/tpvArmXY_Connected"
+        app:layout_constraintTop_toTopOf="@+id/tpvArmXY_Connected"
+        android:visibility="gone"/>
 
 </android.support.constraint.ConstraintLayout>

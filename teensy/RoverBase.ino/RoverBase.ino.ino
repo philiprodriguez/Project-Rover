@@ -109,6 +109,7 @@ void setup() {
     digitalWrite(pinLED, LOW);
     delay(500);
   }
+  Serial.println(sizeof(float));
 }
 
 #define START_SEQUENCE_LENGTH 8
@@ -123,7 +124,28 @@ int nextSerial3Byte() {
 }
 
 float parseFloatFromBytes(byte * bytes) {
-  return 1.0;
+  unsigned int temp = 0;
+
+  temp = temp | bytes[0];
+  temp = temp << 8;
+  temp = temp | bytes[1];
+  temp = temp << 8;
+  temp = temp | bytes[2];
+  temp = temp << 8;
+  temp = temp | bytes[3];
+  
+  float result = *(float*)&temp;
+  return result;
+}
+
+void printIntBits(int b) {
+  for (int i = 0; i < 32; i++) {
+    if ((b&(1<<(31-i))) > 0) {
+      Serial.print("1");
+    } else {
+      Serial.print("0");
+    }
+  }
 }
 
 void loop() {
@@ -195,10 +217,10 @@ void loop() {
     }
   } else if (opcode == 'v') {
     // Voltage read
-    Serial.println("Opcode was for voltage read...");
+    //Serial.println("Opcode was for voltage read...");
     int voltageValue = analogRead(pinVoltageRead);
-    Serial.println("Voltage value int is:");
-    Serial.println(voltageValue);
+    //Serial.println("Voltage value int is:");
+    //Serial.println(voltageValue);
     byte buf[START_SEQUENCE_LENGTH+1+4];
     int i;
     for (i = 0; i < START_SEQUENCE_LENGTH; i++) {
@@ -209,11 +231,12 @@ void loop() {
     buf[i++] = (voltageValue >> 16) & 255;
     buf[i++] = (voltageValue >> 8)  & 255;
     buf[i++] = voltageValue & 255;
-    Serial.print("Sending int bytes: ");
+    //Serial.print("Sending int bytes: ");
     for (int j = 0; j < START_SEQUENCE_LENGTH+1+4; j++) {
-      Serial.print(buf[j]);
-      Serial.print(" ");
+      //Serial.print(buf[j]);
+      //Serial.print(" ");
     }
+    //Serial.println();
     Serial3.write(buf, sizeof(buf));
   } else if (opcode == 'a') {
     // Arm set
@@ -233,6 +256,13 @@ void loop() {
     float baseRad = parseFloatFromBytes(bufBase);
     float oneRad = parseFloatFromBytes(bufOne);
     float twoRad = parseFloatFromBytes(bufTwo);
+    Serial.print("Base Radians: ");
+    Serial.print(baseRad);
+    Serial.print(", One Radians: ");
+    Serial.print(oneRad);
+    Serial.print(", Two Radians: ");
+    Serial.print(twoRad);
+    Serial.println();
     setServoArmBase(baseRad);
     setServoArmOne(oneRad);
     setServoArmTwo(twoRad);

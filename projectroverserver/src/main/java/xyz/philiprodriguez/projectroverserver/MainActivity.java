@@ -27,19 +27,11 @@ import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedList;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import xyz.philiprodriguez.projectrovercommunications.ArmPositionMessage;
 import xyz.philiprodriguez.projectrovercommunications.GlobalLogger;
@@ -177,7 +169,30 @@ public class MainActivity extends AppCompatActivity {
         projectRoverServer.setOnArmPositionMessageReceivedListener(new OnArmPositionMessageReceivedListener() {
             @Override
             public void OnArmPositionMessageReceived(ArmPositionMessage message) {
+                setStatusAndLog("Got arm position message: " + message.toString());
 
+                // Determine necessary thetas to satisfy arm position request
+                ArmDriver armDriver = new ArmDriver(0.15f, 0.15f, 15);
+                long start = System.currentTimeMillis();
+                double[] thetas = armDriver.getThetas((float)message.getX(), (float)message.getY(), (float)message.getZ(), 0.005); // no more than 5mm off
+                long end = System.currentTimeMillis();
+
+                if (thetas == null) {
+                    // Cannot make the requested point!
+                    setStatusAndLog("Requested point out of bounds!!!");
+                    return;
+                }
+
+                setStatusAndLog("Thetas are: " + Arrays.toString(thetas));
+                setStatusAndLog("Which provide (" + armDriver.x_2(thetas[0], thetas[1], thetas[2]) + ", " + armDriver.y_2(thetas[0], thetas[1], thetas[2]) + ", " + armDriver.z_2(thetas[0], thetas[1], thetas[2]));
+                setStatusAndLog("Took " + (end-start) + "ms");
+
+                ByteBuffer byteBuffer = ByteBuffer.allocate(1+4*3);
+                byteBuffer.put((byte)'a');
+                byteBuffer.putFloat((float)thetas[0]);
+                byteBuffer.putFloat((float)thetas[1]); // TODO: Use computed thetas
+                byteBuffer.putFloat((float)thetas[2]);
+                bluetoothHandler.enqueueBluetoothMessage(byteBuffer.array());
             }
         });
         projectRoverServer.setOnLoggableEventListener(new OnLoggableEventListener() {
