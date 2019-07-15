@@ -71,43 +71,49 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-
-    <xyz.philiprodriguez.projectrover.TrackpadView
-        android:id="@+id/tpvArmXY_Connected"
+    <LinearLayout
+        android:id="@+id/llArmXYZ_Connected"
         android:layout_width="0dp"
-        android:layout_height="200dp"
+        android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
         android:layout_marginBottom="32dp"
+        android:orientation="horizontal"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/tpvArmZ_Connected"
-        custom:dimensions="both"
-        custom:minimumChange="1.0"
-        custom:requiredAspectRatio="2.0"
-        custom:toolRadius="32dp" />
+        app:layout_constraintStart_toStartOf="parent">
 
-    <xyz.philiprodriguez.projectrover.TrackpadView
-        android:id="@+id/tpvArmZ_Connected"
-        android:layout_width="64dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="8dp"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@+id/tpvArmXY_Connected"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@+id/tpvArmXY_Connected"
-        custom:dimensions="y"
-        custom:minimumChange="1.0"
-        custom:toolRadius="32dp" />
+        <xyz.philiprodriguez.projectrover.TrackpadView
+            android:id="@+id/tpvArmZ_Connected"
+            android:layout_width="64dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="8dp"
+            android:visibility="visible"
+            custom:dimensions="y"
+            custom:minimumChange="1.0"
+            custom:toolRadius="32dp" />
+
+        <xyz.philiprodriguez.projectrover.TrackpadView
+            android:id="@+id/tpvArmXY_Connected"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="visible"
+            custom:dimensions="both"
+            custom:minimumChange="1.0"
+            custom:requiredAspectRatio="2.0"
+            custom:toolRadius="32dp" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/txtArmXYZ_Connected"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="TextView"
-        app:layout_constraintStart_toStartOf="@+id/tpvArmXY_Connected"
-        app:layout_constraintTop_toTopOf="@+id/tpvArmXY_Connected"
-        android:visibility="gone"/>
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="4dp"
+        android:text="(X, Y, Z)"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/llArmXYZ_Connected"
+        app:layout_constraintStart_toStartOf="@+id/llArmXYZ_Connected" />
 
 </android.support.constraint.ConstraintLayout>

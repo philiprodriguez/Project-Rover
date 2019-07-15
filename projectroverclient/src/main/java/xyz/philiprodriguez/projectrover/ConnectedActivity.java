@@ -17,6 +17,7 @@ import android.view.ViewTreeObserver;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -47,6 +48,7 @@ public class ConnectedActivity extends AppCompatActivity {
     private TextView txtHUDInfo;
     private Button btnMenu;
 
+    private LinearLayout llArmXYZ;
     private TrackpadView tpvArmXY;
     private TrackpadView tpvArmZ;
     private TextView txtArmXYZ;
@@ -208,6 +210,7 @@ public class ConnectedActivity extends AppCompatActivity {
         sebLeftRight = findViewById(R.id.sebLeftRight);
         txtHUDInfo = findViewById(R.id.txtHUDInfo_Connected);
         btnMenu = findViewById(R.id.btnMenu_Connected);
+        llArmXYZ = findViewById(R.id.llArmXYZ_Connected);
         tpvArmXY = findViewById(R.id.tpvArmXY_Connected);
         tpvArmZ = findViewById(R.id.tpvArmZ_Connected);
         txtArmXYZ = findViewById(R.id.txtArmXYZ_Connected);
@@ -236,16 +239,14 @@ public class ConnectedActivity extends AppCompatActivity {
                 popupMenu.getMenu().getItem(1).setOnMenuItemClickListener(new MenuItem.OnMenuItemClickListener() {
                     @Override
                     public boolean onMenuItemClick(MenuItem item) {
-                        if (tpvArmXY.getVisibility() == View.VISIBLE) {
-                            tpvArmZ.setVisibility(View.GONE);
-                            tpvArmXY.setVisibility(View.GONE);
+                        if (llArmXYZ.getVisibility() == View.VISIBLE) {
+                            llArmXYZ.setVisibility(View.GONE);
                             txtArmXYZ.setVisibility(View.GONE);
 
                             sebLeftRight.setVisibility(View.VISIBLE);
                             sebUpDown.setVisibility(View.VISIBLE);
                         } else {
-                            tpvArmZ.setVisibility(View.VISIBLE);
-                            tpvArmXY.setVisibility(View.VISIBLE);
+                            llArmXYZ.setVisibility(View.VISIBLE);
                             txtArmXYZ.setVisibility(View.VISIBLE);
 
                             sebLeftRight.setVisibility(View.GONE);

@@ -125,9 +125,9 @@ public class TrackpadView extends View {
         if (widthMode == MeasureSpec.EXACTLY) {
             chosenWidth = widthSize;
         } else if (widthMode == MeasureSpec.AT_MOST) {
-            chosenWidth = (int)(0.75*widthSize);
+            chosenWidth = widthSize;
         } else if (widthMode == MeasureSpec.UNSPECIFIED) {
-            chosenWidth = (int)(0.75*widthSize);
+            chosenWidth = widthSize;
         } else {
             System.err.println("Unknown width mode supplied to TrackpadView: " + widthMode + " (Size " + widthSize + ")");
             chosenWidth = widthSize;
@@ -136,9 +136,9 @@ public class TrackpadView extends View {
         if (heightMode == MeasureSpec.EXACTLY) {
             chosenHeight = heightSize;
         } else if (widthMode == MeasureSpec.AT_MOST) {
-            chosenHeight = (int)(0.75*heightSize);
+            chosenHeight = heightSize;
         } else if (widthMode == MeasureSpec.UNSPECIFIED) {
-            chosenHeight = (int)(0.75*heightSize);
+            chosenHeight = heightSize;
         } else {
             System.err.println("Unknown height mode supplied to TrackpadView: " + heightMode + " (Size " + heightSize + ")");
             chosenHeight = heightSize;

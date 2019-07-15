@@ -5,68 +5,67 @@
     build-mode="COLD"
     density="xxhdpi"
     format="10"
-    ir-eligibility="COMPATIBLE"
     plugin-version="3.3.0"
-    timestamp="1563148512853"
+    timestamp="1563206747285"
     token="-2697500582525141574"
     verifier="COLD_SWAP_REQUESTED" >
 
     <task
         name="javac"
-        duration="302" />
+        duration="0" />
     <task
         name="instant-run-dex"
         duration="0" />
     <task
         name="instant-run-transform"
-        duration="14" />
+        duration="0" />
     <task
         name="verifier"
         duration="0" />
 
     <artifact
-        location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_3.apk"
+        location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/resources/instant-run/debug/resources-debug.apk"
         type="SPLIT" />
 
     <build
         build-mode="FULL"
-        timestamp="1563145269541"
+        timestamp="1563206265555"
         verifier="FULL_BUILD_REQUESTED" >
         <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/resources/instant-run/debug/resources-debug.apk"
-            type="SPLIT" />
-        <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/dep/dependencies.apk"
-            type="SPLIT" />
-        <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_1.apk"
-            type="SPLIT" />
-        <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_0.apk"
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_3.apk"
             type="SPLIT" />
         <artifact
             location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_2.apk"
             type="SPLIT" />
         <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_3.apk"
-            type="SPLIT" />
-        <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_5.apk"
-            type="SPLIT" />
-        <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_4.apk"
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/resources/instant-run/debug/resources-debug.apk"
             type="SPLIT" />
         <artifact
             location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_7.apk"
             type="SPLIT" />
         <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_6.apk"
-            type="SPLIT" />
-        <artifact
             location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_8.apk"
             type="SPLIT" />
         <artifact
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_1.apk"
+            type="SPLIT" />
+        <artifact
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_6.apk"
+            type="SPLIT" />
+        <artifact
             location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_9.apk"
+            type="SPLIT" />
+        <artifact
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_4.apk"
+            type="SPLIT" />
+        <artifact
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_5.apk"
+            type="SPLIT" />
+        <artifact
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/dep/dependencies.apk"
+            type="SPLIT" />
+        <artifact
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_0.apk"
             type="SPLIT" />
         <artifact
             location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/instant-run-apk/debug/projectroverclient-debug.apk"
@@ -74,19 +73,10 @@
     </build>
     <build
         build-mode="COLD"
-        timestamp="1563148380309"
+        timestamp="1563206747285"
         verifier="COLD_SWAP_REQUESTED" >
         <artifact
             location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/resources/instant-run/debug/resources-debug.apk"
-            type="SPLIT" />
-    </build>
-    <build
-        build-mode="COLD"
-        ir-eligibility="COMPATIBLE"
-        timestamp="1563148512853"
-        verifier="COLD_SWAP_REQUESTED" >
-        <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_3.apk"
             type="SPLIT" />
     </build>
 
