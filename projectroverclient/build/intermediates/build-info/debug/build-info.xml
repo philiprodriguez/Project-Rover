@@ -5,26 +5,27 @@
     build-mode="COLD"
     density="xxhdpi"
     format="10"
+    ir-eligibility="COMPATIBLE"
     plugin-version="3.3.0"
-    timestamp="1563147184024"
+    timestamp="1563148512853"
     token="-2697500582525141574"
     verifier="COLD_SWAP_REQUESTED" >
 
     <task
         name="javac"
-        duration="0" />
+        duration="302" />
     <task
         name="instant-run-dex"
         duration="0" />
     <task
         name="instant-run-transform"
-        duration="0" />
+        duration="14" />
     <task
         name="verifier"
         duration="0" />
 
     <artifact
-        location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/resources/instant-run/debug/resources-debug.apk"
+        location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_3.apk"
         type="SPLIT" />
 
     <build
@@ -73,19 +74,19 @@
     </build>
     <build
         build-mode="COLD"
-        ir-eligibility="COMPATIBLE"
-        timestamp="1563146841827"
+        timestamp="1563148380309"
         verifier="COLD_SWAP_REQUESTED" >
         <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_3.apk"
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/resources/instant-run/debug/resources-debug.apk"
             type="SPLIT" />
     </build>
     <build
         build-mode="COLD"
-        timestamp="1563147184024"
+        ir-eligibility="COMPATIBLE"
+        timestamp="1563148512853"
         verifier="COLD_SWAP_REQUESTED" >
         <artifact
-            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/resources/instant-run/debug/resources-debug.apk"
+            location="/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/split-apk/debug/slices/slice_3.apk"
             type="SPLIT" />
     </build>
 

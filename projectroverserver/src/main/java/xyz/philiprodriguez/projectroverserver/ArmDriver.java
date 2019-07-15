@@ -76,6 +76,23 @@ public class ArmDriver {
     }
 
     /**
+     * Provided some height, determine the inner and outer radius limits in the xy plane using the
+     * angle limits for thetaB, thetaOne, thetaTwo.
+     * @return The inner radius and outer radius, in that order.
+     */
+    public double[] radiiAtHeight(double z_t) {
+        double[] result = new double[2];
+        // So the game here boils down to setting z_2 to z_t and then solving from there...
+
+        // Outer radius is the easier of the two, since we can basically ignore thetaTwo and
+        // instead just assume we have a line of l_1+l_2 length.
+        double len = l_1+l_2;
+        double outerRadius = len*cos(FastMath.asin(z_t/len));
+        result[1] = outerRadius;
+        return result;
+    }
+
+    /**
      * Provided a target point, compute the three thetas. Return null if the computed thetas plot a
      * point whose distance is greater than maxDistance from the target point.
      * @return an array of the three thetas in the order thetaB, thetaOne, thetaTwo, or null.

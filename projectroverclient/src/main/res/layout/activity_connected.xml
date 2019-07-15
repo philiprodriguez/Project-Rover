@@ -84,7 +84,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/tpvArmZ_Connected"
         custom:dimensions="both"
-        custom:minimumChange="5.0"
+        custom:minimumChange="1.0"
         custom:requiredAspectRatio="2.0"
         custom:toolRadius="32dp" />
 
@@ -98,7 +98,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="@+id/tpvArmXY_Connected"
         custom:dimensions="y"
-        custom:minimumChange="5.0"
+        custom:minimumChange="1.0"
         custom:toolRadius="32dp" />
 
     <TextView

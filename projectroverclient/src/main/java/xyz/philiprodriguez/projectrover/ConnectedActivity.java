@@ -358,14 +358,14 @@ public class ConnectedActivity extends AppCompatActivity {
                     return;
                 }
                 tpvArmZ.getViewTreeObserver().removeOnGlobalLayoutListener(this);
-                tpvArmZ.setY(tpvArmZ.getHeight()/2.0f);
+                tpvArmZ.setY(tpvArmZ.getHeight()/3.0f);
 
                 tpvArmZ.setOnTrackpadPositionChangedListener(new OnTrackpadPositionChangedListener() {
                     @Override
                     public void onTrackpadPositionChanged(float x, float y) {
                         // Get z as percentage
-                        float zp = (tpvArmZ.getHeight()-y)/tpvArmZ.getHeight();
-                        zp = 0.3f*zp;
+                        float zp = ((tpvArmZ.getHeight()-y)-(tpvArmZ.getHeight()/3.0f))/tpvArmZ.getHeight();
+                        zp = 0.45f*zp;
 
                         armZf = zp;
 
