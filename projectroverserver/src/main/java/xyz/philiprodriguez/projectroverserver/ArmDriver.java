@@ -11,8 +11,7 @@ public class ArmDriver {
     private final double l_1;
     private final double l_2;
     private final int searchIterations;
-
-    //TODO: Increase range to -7.5 to 130 deg AFTER replacing the first ternary search
+    
     private static final double thetaOneMin = -0.1309;
     private static final double thetaOneMax = 2.2689;
 
