@@ -190,7 +190,7 @@ public class MainActivity extends AppCompatActivity {
                 ByteBuffer byteBuffer = ByteBuffer.allocate(1+4*3);
                 byteBuffer.put((byte)'a');
                 byteBuffer.putFloat((float)thetas[0]);
-                byteBuffer.putFloat((float)thetas[1]); // TODO: Use computed thetas
+                byteBuffer.putFloat((float)thetas[1]);
                 byteBuffer.putFloat((float)thetas[2]);
                 bluetoothHandler.enqueueBluetoothMessage(byteBuffer.array());
             }

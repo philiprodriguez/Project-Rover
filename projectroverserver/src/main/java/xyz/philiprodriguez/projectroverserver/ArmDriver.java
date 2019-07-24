@@ -12,13 +12,9 @@ public class ArmDriver {
     private final double l_2;
     private final int searchIterations;
 
-    //TODO: Increase range AFTER replacing the first ternary search
-    private static final double thetaBMin = 0.0;
-    private static final double thetaBMax = FastMath.PI;
-
     //TODO: Increase range to -7.5 to 130 deg AFTER replacing the first ternary search
-    private static final double thetaOneMin = 0.0;
-    private static final double thetaOneMax = Math.PI/2.0;
+    private static final double thetaOneMin = -0.1309;
+    private static final double thetaOneMax = 2.2689;
 
     private static final double thetaTwoMin = 0.7854;
     private static final double thetaTwoMax = 5.218;
@@ -95,49 +91,34 @@ public class ArmDriver {
     /**
      * Provided a target point, compute the three thetas. Return null if the computed thetas plot a
      * point whose distance is greater than maxDistance from the target point.
-     * @return an array of the three thetas in the order thetaB, thetaOne, thetaTwo, or null.
+     * @return an array of the three thetas in the order thetaB, thetaOne, thetaTwo, or null if no
+     * solution thetas could be found that defined a point within maxDistance from the target point.
      */
     public double[] getThetas(double x_t, double y_t, double z_t, double maxDistance) {
         double[] result1 = new double[3];
 
-        // Ternary search on thetaB, 0 to 180
-        double tbmax = thetaBMax;
-        double tbmin = thetaBMin;
+        // Instead of searching for thetaB consider that for a fixed thetaB, the remaining two
+        // thetas can only access a plane spanned by the +z unit vector and the unit vector in the
+        // xy plane with an angle of thetaB from the x axis. The only possible exact solutions for
+        // thetaB will be when thetaB causes the plane to intersect with the target point. There are
+        // only two such options then for thetaB: atan2(y_t, x_t) and atan2(y_t, x_t)+180. However,
+        // for this specific case of the arm we want to ignore the +180 option to avoid the arm
+        // violently swinging around "unexpectedly".
 
-        // TODO: remove this first level of ternary search of thetaB, assume
-        // TODO: angle between x axis and the target point...
-        // Perform only searchIterations iterations, which should be plenty of precision
-        double mid1 = -1;
-        double mid2 = -1;
-        double[] mid1result = null;
-        double[] mid2result = null;
-        for (int i = 0; i < searchIterations; i++) {
-            // Determine the two thetaB's to try
-            mid1 = tbmin+((tbmax-tbmin)/3.0f);
-            mid2 = tbmin+2.0f*((tbmax-tbmin)/3.0f);
+        double thetaB = FastMath.atan2(y_t, x_t);
 
-            // Try them both
-            mid1result = distanceThetaB(x_t, y_t, z_t, mid1);
-            mid2result = distanceThetaB(x_t, y_t, z_t, mid2);
+        // We must keep in mind that the Teensy code only allows thetaB to span, at the current time
+        // of writing, from -0.3491 to 3.8397, and importantly this means we absolutely must convert
+        // the output of atan2 to avoid clipping, which can be from [-pi, pi] according to the docs.
 
-            // Which one is higher?
-            if (mid1result[0] > mid2result[0]) {
-                tbmin = mid1;
-            } else {
-                tbmax = mid2;
-            }
+        if (thetaB < (-FastMath.PI/2.0)) {
+            thetaB += 2.0*FastMath.PI;
         }
 
-        // Update result
-        if (mid1result[0] < mid2result[0]) {
-            result1[0] = mid1;
-            result1[1] = mid1result[1];
-            result1[2] = mid1result[2];
-        } else {
-            result1[0] = mid2;
-            result1[1] = mid2result[1];
-            result1[2] = mid2result[2];
-        }
+        double[] distResult = distanceThetaB(x_t, y_t, z_t, thetaB);
+        result1[0] = thetaB;
+        result1[1] = distResult[1];
+        result1[2] = distResult[2];
 
         // Sanity check the result
         if (distance(x_t, y_t, z_t, result1[0], result1[1], result1[2]) > maxDistance)
@@ -161,7 +142,7 @@ public class ArmDriver {
 
         // Then we want to search above and below splitTheta
         double topmax = thetaOneMax;
-        double topmin = splitTheta;
+        double topmin = splitTheta;  //TODO: what if splitTheta is less than thetaOneMin???
         double botmax = splitTheta;
         double botmin = thetaOneMin;
 
