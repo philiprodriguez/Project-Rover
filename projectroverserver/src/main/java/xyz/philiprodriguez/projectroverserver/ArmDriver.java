@@ -142,9 +142,12 @@ public class ArmDriver {
 
         // Then we want to search above and below splitTheta
         double topmax = thetaOneMax;
-        double topmin = splitTheta;  //TODO: what if splitTheta is less than thetaOneMin???
-        double botmax = splitTheta;
+        double topmin = FastMath.max(splitTheta, thetaOneMin);
+        double botmax = FastMath.max(splitTheta, thetaOneMin);
         double botmin = thetaOneMin;
+
+        // Note above that it is possible that splitTheta is less then thetaOneMin, which is why we
+        // need the max's.
 
         // Once again searchIterations iterations max
         double topmid1 = -1;
