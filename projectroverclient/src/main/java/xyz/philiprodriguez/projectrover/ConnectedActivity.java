@@ -437,6 +437,7 @@ public class ConnectedActivity extends AppCompatActivity {
 
         // Since robotTrim is client-side, load from shared preferences.
         // default to 10, the middle.
+        robotTrimText.setText("Trim (" + (sharedPreferences.getInt(ROBOT_TRIM_KEY, 10)-10) + ")");
         robotTrim.setProgress(sharedPreferences.getInt(ROBOT_TRIM_KEY, 10));
 
         headlightOn.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
