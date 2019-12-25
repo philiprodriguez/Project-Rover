@@ -1,6 +1,8 @@
 package xyz.philiprodriguez.projectrover;
 
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.os.Handler;
@@ -42,6 +44,8 @@ import xyz.philiprodriguez.projectrovercommunications.ServerStateMessage;
 public class ConnectedActivity extends AppCompatActivity {
     public static final String CLASS_IDENTIFIER = "ConnectedActivity";
 
+    private static final String ROBOT_TRIM_KEY = "robot_trim_key";
+
     private ImageView imgCameraView;
     private SeekBar sebUpDown;
     private SeekBar sebLeftRight;
@@ -68,6 +72,8 @@ public class ConnectedActivity extends AppCompatActivity {
     private float lastY = 0.0f;
     private float lastZ = 0.0f;
 
+    private SharedPreferences sharedPreferences;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -75,6 +81,8 @@ public class ConnectedActivity extends AppCompatActivity {
 
         this.port = getIntent().getIntExtra("port", -1);
         this.host = getIntent().getStringExtra("host");
+
+        this.sharedPreferences = getPreferences(Context.MODE_PRIVATE);
 
         initComponents();
     }
@@ -419,9 +427,17 @@ public class ConnectedActivity extends AppCompatActivity {
         SeekBar jpegQuality = rootView.findViewById(R.id.sebJpegQuality);
         SeekBar servoRot = rootView.findViewById(R.id.sebServoRot);
 
+        // Keep in mind that robotTrim is actually a client-side setting, not a server-side setting.
+        final TextView robotTrimText = rootView.findViewById(R.id.txtRobotTrim);
+        SeekBar robotTrim = rootView.findViewById(R.id.sebRobotTrim);
+
         headlightOn.setChecked(projectRoverClient.getPerceivedServerSettings().getHeadlightOn());
         jpegQuality.setProgress(projectRoverClient.getPerceivedServerSettings().getJpegQuality());
         servoRot.setProgress(projectRoverClient.getPerceivedServerSettings().getServoRotationAmount());
+
+        // Since robotTrim is client-side, load from shared preferences.
+        // default to 10, the middle.
+        robotTrim.setProgress(sharedPreferences.getInt(ROBOT_TRIM_KEY, 10));
 
         headlightOn.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -476,6 +492,24 @@ public class ConnectedActivity extends AppCompatActivity {
             }
         });
 
+        robotTrim.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+                robotTrimText.setText("Trim (" + (i-10) + ")");
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                // Save client setting
+                sharedPreferences.edit().putInt(ROBOT_TRIM_KEY, seekBar.getProgress()).apply();
+            }
+        });
+
         builder.setView(rootView);
         builder.setNegativeButton("Dismiss", null);
         AlertDialog created = builder.create();
@@ -486,10 +520,16 @@ public class ConnectedActivity extends AppCompatActivity {
         if (projectRoverClient == null)
             return;
 
-        double magnitudeUpDown = Math.abs(lastUpDown.get()-50)/50.0;
-        double magnitudeLeftRight = Math.abs(lastLeftRight.get()-50)/50.0;
-        boolean goingUp = lastUpDown.get() > 50;
-        boolean goingLeft = lastLeftRight.get() < 50;
+        // Fetch current values and apply trim for left/right
+        int lastUpDownLocal = lastUpDown.get();
+        int lastLeftRightLocal =  Math.max(0, Math.min(100, lastLeftRight.get() + sharedPreferences.getInt(ROBOT_TRIM_KEY, 10)-10));
+        System.out.println("lastUpDownLocal=" + lastUpDownLocal);
+        System.out.println("lastLeftRightLocal=" + lastLeftRightLocal);
+
+        double magnitudeUpDown = Math.abs(lastUpDownLocal-50)/50.0;
+        double magnitudeLeftRight = Math.abs(lastLeftRightLocal-50)/50.0;
+        boolean goingUp = lastUpDownLocal > 50;
+        boolean goingLeft = lastLeftRightLocal < 50;
 
         int lf = 0;
         int lb = 0;

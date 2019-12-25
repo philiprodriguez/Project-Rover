@@ -777,6 +777,7 @@ id search_src_text
 id search_voice_btn
 id sebJpegQuality
 id sebLeftRight
+id sebRobotTrim
 id sebServoRot
 id sebUpDown_Connected
 id select_dialog_listview
@@ -819,6 +820,7 @@ id tpvArmXY_Connected
 id tpvArmZ_Connected
 id txtArmXYZ_Connected
 id txtHUDInfo_Connected
+id txtRobotTrim
 id uniform
 id up
 id useLogo
