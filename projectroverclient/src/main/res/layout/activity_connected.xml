@@ -31,7 +31,7 @@
         app:layout_constraintEnd_toStartOf="@+id/textView2" />
 
     <SeekBar
-        android:id="@+id/sebLeftRight"
+        android:id="@+id/sebLeftRight_Connected"
         android:layout_width="120dp"
         android:layout_height="wrap_content"
         android:layout_marginEnd="16dp"
@@ -70,6 +70,16 @@
         android:text="Menu"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/btnSpeak_Connected"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="8dp"
+        android:text="Speak"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnMenu_Connected" />
 
     <LinearLayout
         android:id="@+id/llArmXYZ_Connected"

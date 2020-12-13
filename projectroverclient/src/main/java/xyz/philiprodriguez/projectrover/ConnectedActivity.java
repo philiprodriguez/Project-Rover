@@ -1,11 +1,14 @@
 package xyz.philiprodriguez.projectrover;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioRecord;
 import android.media.AudioTrack;
+import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -13,6 +16,7 @@ import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.view.LayoutInflater;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.Button;
@@ -53,6 +57,7 @@ public class ConnectedActivity extends AppCompatActivity {
     private SeekBar sebLeftRight;
     private TextView txtHUDInfo;
     private Button btnMenu;
+    private Button btnSpeak;
 
     private LinearLayout llArmXYZ;
     private TrackpadView tpvArmXY;
@@ -90,12 +95,18 @@ public class ConnectedActivity extends AppCompatActivity {
 
     private SharedPreferences sharedPreferences;
 
-    // Audio stuff
-    private final Queue<Byte> clientAudioPlaybackPcmValueQueue = new ConcurrentLinkedQueue<>();
-    private volatile Handler clientAudioHandler;
-    private volatile HandlerThread clientAudioHandlerThread;
-    private volatile Runnable clientAudioRunnable;
-    private volatile AudioTrack audioTrack;
+    // Audio stuff for playback of audio from the server
+    private final Queue<Byte> audioPlaybackPcmValueQueue = new ConcurrentLinkedQueue<>();
+    private volatile Handler audioPlaybackHandler;
+    private volatile HandlerThread audioPlaybackHandlerThread;
+    private volatile Runnable audioPlaybackRunnable;
+    private volatile AudioTrack audioPlaybackTrack;
+
+    // Audio stuff for recording audio to be sent to the server
+    private volatile AudioRecord audioRecord;
+    private volatile Handler audioRecordHandler;
+    private volatile HandlerThread audioRecordHandlerThread;
+    private volatile Runnable audioRecordRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -114,7 +125,7 @@ public class ConnectedActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
 
-        startClientAudioHandler();
+        startAudioPlaybackHandler();
 
         openClientConnectionHandler();
         connect();
@@ -125,7 +136,7 @@ public class ConnectedActivity extends AppCompatActivity {
         super.onPause();
 
         closeClientConnectorHandler();
-        stopClientAudioHandler();
+        stopAudioPlaybackHandler();
 
         // Kill client connection
         if (projectRoverClient != null) {
@@ -135,12 +146,14 @@ public class ConnectedActivity extends AppCompatActivity {
 
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void initComponents() {
         imgCameraView = findViewById(R.id.imgCameraView_Connected);
         sebUpDown = findViewById(R.id.sebUpDown_Connected);
-        sebLeftRight = findViewById(R.id.sebLeftRight);
+        sebLeftRight = findViewById(R.id.sebLeftRight_Connected);
         txtHUDInfo = findViewById(R.id.txtHUDInfo_Connected);
         btnMenu = findViewById(R.id.btnMenu_Connected);
+        btnSpeak = findViewById(R.id.btnSpeak_Connected);
         llArmXYZ = findViewById(R.id.llArmXYZ_Connected);
         tpvArmXY = findViewById(R.id.tpvArmXY_Connected);
         tpvArmZ = findViewById(R.id.tpvArmZ_Connected);
@@ -195,6 +208,21 @@ public class ConnectedActivity extends AppCompatActivity {
                 });
 
                 popupMenu.show();
+            }
+        });
+
+        btnSpeak.setOnTouchListener(new View.OnTouchListener() {
+            @SuppressLint("ClickableViewAccessibility")
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
+                    startAudioRecordHandler();
+                    stopAudioPlaybackHandler();
+                } else if (motionEvent.getAction() == MotionEvent.ACTION_UP) {
+                    stopAudioRecordHandler();
+                    startAudioPlaybackHandler();
+                }
+                return true;
             }
         });
 
@@ -307,13 +335,23 @@ public class ConnectedActivity extends AppCompatActivity {
             }
         });
 
-        audioTrack = new AudioTrack(
+        audioPlaybackTrack = new AudioTrack(
                 AudioManager.STREAM_MUSIC,
                 44100,
                 AudioFormat.CHANNEL_CONFIGURATION_MONO,
                 AudioFormat.ENCODING_PCM_8BIT,
                 8820,
                 AudioTrack.MODE_STREAM);
+
+        audioRecord = new AudioRecord(
+                MediaRecorder.AudioSource.CAMCORDER,
+                44100,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_8BIT,
+                44100);
+        if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+            throw new IllegalStateException("AudioRecord object failed to initialize properly! Check the constructor args?");
+        }
     }
 
     private void connect() {
@@ -324,26 +362,28 @@ public class ConnectedActivity extends AppCompatActivity {
         clientConnectorHandler.post(clientConnectorRunnable);
     }
 
-    private void startClientAudioHandler() {
-        clientAudioHandlerThread = new HandlerThread("Client Audio Handler Thread");
-        clientAudioHandlerThread.start();
-        clientAudioHandler = new Handler(clientAudioHandlerThread.getLooper());
+    private void startAudioPlaybackHandler() {
+        // Any time we are re-starting playback, we should nuke any values currently in the queue...
+        audioPlaybackPcmValueQueue.clear();
+        audioPlaybackHandlerThread = new HandlerThread("Client Audio Handler Thread");
+        audioPlaybackHandlerThread.start();
+        audioPlaybackHandler = new Handler(audioPlaybackHandlerThread.getLooper());
 
-        clientAudioRunnable = new Runnable() {
+        audioPlaybackRunnable = new Runnable() {
             @Override
             public void run() {
-                if (clientAudioPlaybackPcmValueQueue.size() > 0) {
+                if (audioPlaybackPcmValueQueue.size() > 0) {
                     // Only play if we have at least a tenth of a second of audio.
-                    if (clientAudioPlaybackPcmValueQueue.size() >= 4410) {
+                    if (audioPlaybackPcmValueQueue.size() >= 4410) {
                         byte[] playbackBytes;
-                        if (clientAudioPlaybackPcmValueQueue.size() > 4410 * 5) {
+                        if (audioPlaybackPcmValueQueue.size() > 4410 * 5) {
                             System.out.println("Speeding up");
                             // If we're more than 5 tenths of a second behind, then let's speed it up by
                             // playing only 9 out of every 10 bytes.
                             playbackBytes = new byte[3969];
                             int place = 0;
                             for (int i = 0; i < 4410; i++) {
-                                byte val = clientAudioPlaybackPcmValueQueue.poll();
+                                byte val = audioPlaybackPcmValueQueue.poll();
                                 if (i % 10 == 0) {
                                     continue;
                                 }
@@ -354,30 +394,80 @@ public class ConnectedActivity extends AppCompatActivity {
                                 throw new IllegalStateException("Place was " + place + " when it should have been " + playbackBytes.length);
                             }
                         } else {
-                            System.out.println("Normal speed");
                             // If we're not falling behind, just play it back normally
                             playbackBytes = new byte[4410];
                             for (int i = 0; i < 4410; i++) {
-                                playbackBytes[i] = clientAudioPlaybackPcmValueQueue.poll();
+                                playbackBytes[i] = audioPlaybackPcmValueQueue.poll();
                             }
                         }
-                        audioTrack.write(playbackBytes, 0, playbackBytes.length, AudioTrack.WRITE_BLOCKING);
+                        audioPlaybackTrack.write(playbackBytes, 0, playbackBytes.length, AudioTrack.WRITE_BLOCKING);
                     }
 
-                    if (audioTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
-                        audioTrack.play();
+                    if (audioPlaybackTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
+                        audioPlaybackTrack.play();
                     }
                 }
 
-                Handler localHandlerRef = clientAudioHandler;
+                Handler localHandlerRef = audioPlaybackHandler;
                 if (localHandlerRef != null) {
-                    localHandlerRef.postDelayed(clientAudioRunnable, 1);
+                    localHandlerRef.postDelayed(audioPlaybackRunnable, 1);
                 }
             }
         };
 
         // Kick off the audio playback thread...
-        clientAudioHandler.postDelayed(clientAudioRunnable, 10);
+        audioPlaybackHandler.postDelayed(audioPlaybackRunnable, 1);
+    }
+
+    private void stopAudioPlaybackHandler() {
+        if (audioPlaybackHandlerThread != null) {
+            audioPlaybackHandlerThread.quitSafely();
+            audioPlaybackHandlerThread = null;
+            audioPlaybackHandler = null;
+            audioPlaybackTrack.pause();
+            audioPlaybackTrack.flush();
+        }
+    }
+
+    private void startAudioRecordHandler() {
+        audioRecordHandlerThread = new HandlerThread("Audio Record Handler Thread");
+        audioRecordHandlerThread.start();
+        audioRecordHandler = new Handler(audioRecordHandlerThread.getLooper());
+
+        audioRecordRunnable = new Runnable() {
+            @Override
+            public void run() {
+                // Our audio frame size is one tenth of one second...
+                byte[] audioFrameBytes = new byte[4410];
+
+                // Make sure we're actually recording!
+                if (audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecord.startRecording();
+                }
+
+                // We can use READ_BLOCKING since we have our own handler / thread here..
+                audioRecord.read(audioFrameBytes, 0, audioFrameBytes.length, AudioRecord.READ_BLOCKING);
+
+                if (projectRoverClient != null) {
+                    projectRoverClient.doEnqueueAudioFrame(audioFrameBytes);
+                }
+
+                Handler localHandlerCopy = audioRecordHandler;
+                if (localHandlerCopy != null) {
+                    audioRecordHandler.postDelayed(audioRecordRunnable, 1);
+                }
+            }
+        };
+        audioRecordHandler.postDelayed(audioRecordRunnable, 1);
+    }
+
+    private void stopAudioRecordHandler() {
+        if (audioRecordHandlerThread != null) {
+            audioRecordHandlerThread.quitSafely();
+            audioRecordHandlerThread = null;
+            audioRecordHandler = null;
+            audioRecord.stop();
+        }
     }
 
     private void openClientConnectionHandler() {
@@ -407,8 +497,10 @@ public class ConnectedActivity extends AppCompatActivity {
                         @Override
                         public void onPCMFrameMessageReceived(PCMFrameMessage message) {
                             // Enqueue all PCM values
-                            for (byte b : message.getFrameBytes()) {
-                                clientAudioPlaybackPcmValueQueue.add(b);
+                            if (audioPlaybackHandler != null) {
+                                for (byte b : message.getFrameBytes()) {
+                                    audioPlaybackPcmValueQueue.add(b);
+                                }
                             }
                         }
                     });
@@ -478,16 +570,6 @@ public class ConnectedActivity extends AppCompatActivity {
             clientConnectorHandlerThread.quitSafely();
             clientConnectorHandlerThread = null;
             clientConnectorHandler = null;
-        }
-    }
-
-    private void stopClientAudioHandler() {
-        if (clientAudioHandlerThread != null) {
-            clientAudioHandlerThread.quitSafely();
-            clientAudioHandlerThread = null;
-            clientAudioHandler = null;
-            audioTrack.pause();
-            audioTrack.flush();
         }
     }
 

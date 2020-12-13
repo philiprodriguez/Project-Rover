@@ -11,7 +11,9 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioRecord;
+import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
@@ -37,6 +39,8 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import xyz.philiprodriguez.projectrovercommunications.ArmPositionMessage;
 import xyz.philiprodriguez.projectrovercommunications.GlobalLogger;
@@ -44,7 +48,9 @@ import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
 import xyz.philiprodriguez.projectrovercommunications.OnArmPositionMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.OnLoggableEventListener;
 import xyz.philiprodriguez.projectrovercommunications.OnMotorStateMessageReceivedListener;
+import xyz.philiprodriguez.projectrovercommunications.OnPCMFrameMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.OnServerSettingsMessageReceivedListener;
+import xyz.philiprodriguez.projectrovercommunications.PCMFrameMessage;
 import xyz.philiprodriguez.projectrovercommunications.ProjectRoverServer;
 import xyz.philiprodriguez.projectrovercommunications.ServerSettings;
 import xyz.philiprodriguez.projectrovercommunications.ServerSettingsMessage;
@@ -82,11 +88,18 @@ public class MainActivity extends AppCompatActivity {
     Handler cameraTimerHandler;
     Runnable cameraTimerRunnable;
 
-    // Audio stuff
+    // Audio stuff for recording and sending to client
     AudioRecord audioRecord;
     Handler audioRecordHandler;
     HandlerThread audioRecordHandlerThread;
     Runnable audioRecordRunnable;
+
+    // Audio stuff for playback of audio from the client
+    final Queue<Byte> audioPlaybackPcmValueQueue = new ConcurrentLinkedQueue<>();
+    Handler audioPlaybackHandler;
+    HandlerThread audioPlaybackHandlerThread;
+    Runnable audioPlaybackRunnable;
+    AudioTrack audioPlaybackTrack;
 
     // State send timer only
     Handler stateSendTimerHandler;
@@ -126,6 +139,23 @@ public class MainActivity extends AppCompatActivity {
         initComponents();
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (requestCode == PERMISSIONS_REQUEST_CODE) {
+            boolean allGranted = true;
+            for (int i = 0; i < permissions.length; i++) {
+                if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                    setStatusAndLog("The required permission " + permissions[i] + " was rejected, so the app will not resume. Restart the app to try again.");
+                    allGranted = false;
+                }
+            }
+            if (allGranted) {
+                setStatusAndLog("All required permissions were granted! Resuming...");
+                performOnResumeDuties();
+            }
+        }
+    }
+
     private void initComponents() {
         scrStatusScrollView = findViewById(R.id.scrStatusScrollView_Main);
         txtStatusMessage = findViewById(R.id.txtStatusMessage_Main);
@@ -155,6 +185,14 @@ public class MainActivity extends AppCompatActivity {
         };
         cameraTimerHandler.postDelayed(cameraTimerRunnable, 25);
 
+        audioPlaybackTrack = new AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                44100,
+                AudioFormat.CHANNEL_CONFIGURATION_MONO,
+                AudioFormat.ENCODING_PCM_8BIT,
+                8820,
+                AudioTrack.MODE_STREAM);
+
         audioRecord = new AudioRecord(
                 MediaRecorder.AudioSource.CAMCORDER,
                 44100,
@@ -163,23 +201,6 @@ public class MainActivity extends AppCompatActivity {
                 44100);
         if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
             throw new IllegalStateException("AudioRecord object failed to initialize properly! Check the constructor args?");
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        if (requestCode == PERMISSIONS_REQUEST_CODE) {
-            boolean allGranted = true;
-            for (int i = 0; i < permissions.length; i++) {
-                if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
-                    setStatusAndLog("The required permission " + permissions[i] + " was rejected, so the app will not resume. Restart the app to try again.");
-                    allGranted = false;
-                }
-            }
-            if (allGranted) {
-                setStatusAndLog("All required permissions were granted! Resuming...");
-                performOnResumeDuties();
-            }
         }
     }
 
@@ -293,6 +314,17 @@ public class MainActivity extends AppCompatActivity {
                 setStatusAndLog("Set server settings: " + serverSettingsMessage.getServerSettings().toString());
             }
         });
+        projectRoverServer.setOnPCMFrameMessageReceivedListener(new OnPCMFrameMessageReceivedListener() {
+            @Override
+            public void onPCMFrameMessageReceived(PCMFrameMessage message) {
+                // Enqueue all PCM values
+                if (audioPlaybackHandler != null) {
+                    for (byte b : message.getFrameBytes()) {
+                        audioPlaybackPcmValueQueue.add(b);
+                    }
+                }
+            }
+        });
         setStatusAndLog("Server started with settings:" + System.lineSeparator() + projectRoverServer.getServerSettings().toString());
         btnStopServer.setText("Stop Server");
     }
@@ -328,6 +360,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void performOnResumeDuties() {
         startAudioRecordHandler();
+        startAudioPlaybackHandler();
 
         openCameraBackgroundHandler();
         if (txvCameraPreview.isAvailable()) {
@@ -446,10 +479,78 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void startAudioPlaybackHandler() {
+        // Any time we are re-starting playback, we should nuke any values currently in the queue...
+        audioPlaybackPcmValueQueue.clear();
+        audioPlaybackHandlerThread = new HandlerThread("Client Audio Handler Thread");
+        audioPlaybackHandlerThread.start();
+        audioPlaybackHandler = new Handler(audioPlaybackHandlerThread.getLooper());
+
+        audioPlaybackRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (audioPlaybackPcmValueQueue.size() > 0) {
+                    // Only play if we have at least a tenth of a second of audio.
+                    if (audioPlaybackPcmValueQueue.size() >= 4410) {
+                        byte[] playbackBytes;
+                        if (audioPlaybackPcmValueQueue.size() > 4410 * 5) {
+                            System.out.println("Speeding up");
+                            // If we're more than 5 tenths of a second behind, then let's speed it up by
+                            // playing only 9 out of every 10 bytes.
+                            playbackBytes = new byte[3969];
+                            int place = 0;
+                            for (int i = 0; i < 4410; i++) {
+                                byte val = audioPlaybackPcmValueQueue.poll();
+                                if (i % 10 == 0) {
+                                    continue;
+                                }
+                                playbackBytes[place] = val;
+                                place++;
+                            }
+                            if (place != playbackBytes.length) {
+                                throw new IllegalStateException("Place was " + place + " when it should have been " + playbackBytes.length);
+                            }
+                        } else {
+                            // If we're not falling behind, just play it back normally
+                            playbackBytes = new byte[4410];
+                            for (int i = 0; i < 4410; i++) {
+                                playbackBytes[i] = audioPlaybackPcmValueQueue.poll();
+                            }
+                        }
+                        audioPlaybackTrack.write(playbackBytes, 0, playbackBytes.length, AudioTrack.WRITE_BLOCKING);
+                    }
+
+                    if (audioPlaybackTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
+                        audioPlaybackTrack.play();
+                    }
+                }
+
+                Handler localHandlerRef = audioPlaybackHandler;
+                if (localHandlerRef != null) {
+                    localHandlerRef.postDelayed(audioPlaybackRunnable, 1);
+                }
+            }
+        };
+
+        // Kick off the audio playback thread...
+        audioPlaybackHandler.postDelayed(audioPlaybackRunnable, 1);
+    }
+
+    private void stopAudioPlaybackHandler() {
+        if (audioPlaybackHandlerThread != null) {
+            audioPlaybackHandlerThread.quitSafely();
+            audioPlaybackHandlerThread = null;
+            audioPlaybackHandler = null;
+            audioPlaybackTrack.pause();
+            audioPlaybackTrack.flush();
+        }
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
 
+        stopAudioPlaybackHandler();
         stopAudioRecordHandler();
 
         closeCamera();
