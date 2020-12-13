@@ -16,6 +16,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.format.Formatter;
@@ -28,10 +29,12 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedList;
+import java.util.List;
 
 import xyz.philiprodriguez.projectrovercommunications.ArmPositionMessage;
 import xyz.philiprodriguez.projectrovercommunications.GlobalLogger;
@@ -47,7 +50,7 @@ import xyz.philiprodriguez.projectrovercommunications.ServerStateMessage;
 
 public class MainActivity extends AppCompatActivity {
     public static final String CLASS_IDENTIFIER = "MainActivity (Server)";
-    private static final int CAMERA_PERMISSION_CODE = 315736;
+    private static final int PERMISSIONS_REQUEST_CODE = 315736;
     private static final int MAX_STATUS_TEXT_SIZE = 100;
 
     private ProjectRoverServer projectRoverServer;
@@ -145,6 +148,52 @@ public class MainActivity extends AppCompatActivity {
         cameraTimerHandler.postDelayed(cameraTimerRunnable, 25);
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (requestCode == PERMISSIONS_REQUEST_CODE) {
+            boolean allGranted = true;
+            for (int i = 0; i < permissions.length; i++) {
+                if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                    setStatusAndLog("The required permission " + permissions[i] + " was rejected, so the app will not resume. Restart the app to try again.");
+                    allGranted = false;
+                }
+            }
+            if (allGranted) {
+                setStatusAndLog("All required permissions were granted! Resuming...");
+                performOnResumeDuties();
+            }
+        }
+    }
+
+    // Returns true if all the needed permissions are already granted, and false otherwise.
+    private boolean checkAllPermissions() {
+        List<String> missingPermissions = new ArrayList<>();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {
+            missingPermissions.add(Manifest.permission.INTERNET);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_WIFI_STATE) != PackageManager.PERMISSION_GRANTED) {
+            missingPermissions.add(Manifest.permission.ACCESS_WIFI_STATE);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            missingPermissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            missingPermissions.add(Manifest.permission.CAMERA);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+            missingPermissions.add(Manifest.permission.BLUETOOTH);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED) {
+            missingPermissions.add(Manifest.permission.BLUETOOTH_ADMIN);
+        }
+        if (missingPermissions.size() == 0) {
+            return true;
+        }
+        setStatusAndLog("Missing permissions: " + missingPermissions.toString());
+        requestPermissions(missingPermissions.toArray(new String[]{}), PERMISSIONS_REQUEST_CODE);
+        return false;
+    }
+
     private void startServer() {
         setStatusAndLog("Starting server...");
 
@@ -154,7 +203,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if  (wifiManager.getConnectionInfo().getNetworkId() == -1) {
-            setStatusAndLog("Cannto start since Wi-Fi is disconnected!");
+            setStatusAndLog("Cannot start since Wi-Fi is disconnected!");
             return;
         }
         setStatusAndLog("Wi-Fi IP address is " + Formatter.formatIpAddress(wifiManager.getConnectionInfo().getIpAddress()));
@@ -246,6 +295,17 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
 
+        setStatusAndLog("Checking permissions...");
+        if (checkAllPermissions()) {
+            setStatusAndLog("All required permissions are granted!");
+            performOnResumeDuties();
+        } else {
+            setStatusAndLog("Cannot resume since permissions check failed! Will retry once permissions are granted.");
+            return;
+        }
+    }
+
+    private void performOnResumeDuties() {
         openCameraBackgroundHandler();
         if (txvCameraPreview.isAvailable()) {
             if (setupCamera())
@@ -336,7 +396,9 @@ public class MainActivity extends AppCompatActivity {
             stateSendTimerRunnble = null;
         }
 
-        bluetoothHandler.recycle();
+        if (bluetoothHandler != null) {
+            bluetoothHandler.recycle();
+        }
 
         if (projectRoverServer != null) {
             stopServer();
@@ -444,22 +506,16 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean openCamera() {
         setStatusAndLog("Opening camera...");
-        if (Build.VERSION.SDK_INT >= 23) {
-            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                setStatusAndLog("Lacking required camera permissions! Requesting...");
-                requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
-            } else {
-                setStatusAndLog("Camera permission is granted!");
-            }
-        } else {
-            setStatusAndLog("Android SDK level is too low to request permission to open camera!");
-        }
 
         try {
             cameraManager.openCamera(cameraRearId, cameraStateCallback, cameraBackgroundHandler);
             setStatusAndLog("Camera successfully opened!");
             return true;
         } catch (CameraAccessException e) {
+            e.printStackTrace();
+            setStatusAndLog("Failed to access camera for opening!");
+            return false;
+        } catch (SecurityException e) {
             e.printStackTrace();
             setStatusAndLog("Failed to access camera for opening!");
             return false;
