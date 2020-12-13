@@ -23,6 +23,7 @@ public class ReceiverThread extends Thread {
     private volatile OnArmPositionMessageReceivedListener onArmPositionMessageReceivedListener;
     private volatile OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener;
     private volatile OnServerStateMessageReceivedListener onServerStateMessageReceivedListener;
+    private volatile OnPCMFrameMessageReceivedListener onPCMFrameMessageReceivedListener;
 
     public ReceiverThread(Socket clientSocket, OnThreadFinishedListener onThreadFinishedListener) {
         this.clientSocket = clientSocket;
@@ -95,6 +96,10 @@ public class ReceiverThread extends Thread {
                     ServerStateMessage message = new ServerStateMessage().fromBytes(messageBytes);
                     if (onServerStateMessageReceivedListener != null)
                         onServerStateMessageReceivedListener.OnServerStateMessageReceived(message);
+                } else if (startCode == new PCMFrameMessage().getStartCode()) {
+                    PCMFrameMessage message = new PCMFrameMessage().fromBytes(messageBytes);
+                    if (onPCMFrameMessageReceivedListener != null)
+                        onPCMFrameMessageReceivedListener.onPCMFrameMessageReceived(message);
                 } else {
                     GlobalLogger.log(CLASS_IDENTIFIER, GlobalLogger.ERROR, "Received illegal start code of " + startCode);
                 }
@@ -129,5 +134,9 @@ public class ReceiverThread extends Thread {
 
     public void setOnServerSettingsMessageReceivedListener(OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener) {
         this.onServerSettingsMessageReceivedListener = onServerSettingsMessageReceivedListener;
+    }
+
+    public void setOnPCMFrameMessageReceivedListener(OnPCMFrameMessageReceivedListener onPCMFrameMessageReceivedListener) {
+        this.onPCMFrameMessageReceivedListener = onPCMFrameMessageReceivedListener;
     }
 }

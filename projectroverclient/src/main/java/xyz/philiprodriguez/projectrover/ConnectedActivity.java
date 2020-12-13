@@ -1,19 +1,18 @@
 package xyz.philiprodriguez.projectrover;
 
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
-import android.view.DragEvent;
 import android.view.LayoutInflater;
-import android.view.Menu;
 import android.view.MenuItem;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.Button;
@@ -25,9 +24,10 @@ import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.support.v7.widget.Toolbar;
 
 import java.io.IOException;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -35,7 +35,9 @@ import xyz.philiprodriguez.projectrovercommunications.ArmPositionMessage;
 import xyz.philiprodriguez.projectrovercommunications.MotorStateMessage;
 import xyz.philiprodriguez.projectrovercommunications.OnClientConnectionKilledListener;
 import xyz.philiprodriguez.projectrovercommunications.OnFrameReceivedListener;
+import xyz.philiprodriguez.projectrovercommunications.OnPCMFrameMessageReceivedListener;
 import xyz.philiprodriguez.projectrovercommunications.OnServerStateMessageReceivedListener;
+import xyz.philiprodriguez.projectrovercommunications.PCMFrameMessage;
 import xyz.philiprodriguez.projectrovercommunications.ProjectRoverClient;
 import xyz.philiprodriguez.projectrovercommunications.ServerSettings;
 import xyz.philiprodriguez.projectrovercommunications.ServerSettingsMessage;
@@ -57,8 +59,22 @@ public class ConnectedActivity extends AppCompatActivity {
     private TrackpadView tpvArmZ;
     private TextView txtArmXYZ;
     private float armXf, armYf, armZf;
+
+    // Represents the last time an arm update was sent in milliseconds.
+    // Used to ignore arm inputs that occur less than soem number of ms from the previous input.
     private AtomicLong lastArmUpdate = new AtomicLong(0);
 
+    // Represents the last "accepted"/sent value read from sebUpDown.
+    private AtomicInteger lastUpDown = new AtomicInteger(50);
+
+    // Represents the last "accepted"/sent value read from sebLeftRight.
+    private AtomicInteger lastLeftRight = new AtomicInteger(50);
+
+    // Represents a counter for the number of SeekBars that are currently being touched.
+    // Used to send a stop message whenever this number goes to 0 (user releases all controls).
+    private AtomicInteger numTracking = new AtomicInteger(0);
+
+    // Simple variables to store the host and port that were sent in the intent to this activity
     private volatile int port;
     private volatile String host;
 
@@ -74,6 +90,13 @@ public class ConnectedActivity extends AppCompatActivity {
 
     private SharedPreferences sharedPreferences;
 
+    // Audio stuff
+    private final Queue<Byte> clientAudioPlaybackPcmValueQueue = new ConcurrentLinkedQueue<>();
+    private volatile Handler clientAudioHandler;
+    private volatile HandlerThread clientAudioHandlerThread;
+    private volatile Runnable clientAudioRunnable;
+    private volatile AudioTrack audioTrack;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -87,17 +110,11 @@ public class ConnectedActivity extends AppCompatActivity {
         initComponents();
     }
 
-    private void connect() {
-        if (projectRoverClient != null && !projectRoverClient.isKilled()) {
-            return;
-        }
-
-        clientConnectorHandler.post(clientConnectorRunnable);
-    }
-
     @Override
     protected void onResume() {
         super.onResume();
+
+        startClientAudioHandler();
 
         openClientConnectionHandler();
         connect();
@@ -108,6 +125,7 @@ public class ConnectedActivity extends AppCompatActivity {
         super.onPause();
 
         closeClientConnectorHandler();
+        stopClientAudioHandler();
 
         // Kill client connection
         if (projectRoverClient != null) {
@@ -117,101 +135,6 @@ public class ConnectedActivity extends AppCompatActivity {
 
     }
 
-    private void openClientConnectionHandler() {
-        clientConnectorHandlerThread = new HandlerThread("Client Connector Handler Thread");
-        clientConnectorHandlerThread.start();
-        clientConnectorHandler = new Handler(clientConnectorHandlerThread.getLooper());
-
-        clientConnectorRunnable = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    projectRoverClient = new ProjectRoverClient(host, port);
-                    projectRoverClient.setOnFrameReceivedListener(new OnFrameReceivedListener() {
-                        @Override
-                        public void OnFrameReceived(final Bitmap bitmap) {
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (imgCameraView != null) {
-                                        imgCameraView.setImageBitmap(bitmap);
-                                    }
-                                }
-                            });
-                        }
-                    });
-                    projectRoverClient.setOnClientConnectionKilledListener(new OnClientConnectionKilledListener() {
-                        @Override
-                        public void OnClientConnectionKilled() {
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    Toast.makeText(ConnectedActivity.this, "Connection terminated...", Toast.LENGTH_SHORT).show();
-                                    if (clientConnectorHandler != null) {
-                                        clientConnectorHandler.postDelayed(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                connect();
-                                            }
-                                        }, 10000);
-                                    }
-                                }
-                            });
-                        }
-                    });
-                    projectRoverClient.setOnServerStateMessageReceivedListener(new OnServerStateMessageReceivedListener() {
-                        @Override
-                        public void OnServerStateMessageReceived(final ServerStateMessage serverStateMessage) {
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    StringBuilder sb = new StringBuilder();
-                                    sb.append("Robot Primary Battery: " + serverStateMessage.getPrimaryBatteryLevel() + "%");
-                                    sb.append(System.lineSeparator());
-                                    sb.append("Robot Tablet Battery: " + serverStateMessage.getPhoneBatteryLevel() + "%");
-                                    txtHUDInfo.setText(sb.toString());
-                                }
-                            });
-                        }
-                    });
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(ConnectedActivity.this, "Connected to robot!", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                } catch (IOException e) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(ConnectedActivity.this, "Failed to connect to robot server! Retrying in 10 seconds...", Toast.LENGTH_SHORT).show();
-
-                            if (clientConnectorHandler != null) {
-                                clientConnectorHandler.postDelayed(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        connect();
-                                    }
-                                }, 10000);
-                            }
-                        }
-                    });
-                }
-            }
-        };
-    }
-
-    private void closeClientConnectorHandler() {
-        if (clientConnectorHandlerThread != null) {
-            clientConnectorHandlerThread.quitSafely();
-            clientConnectorHandlerThread = null;
-            clientConnectorHandler = null;
-        }
-    }
-
-    private AtomicInteger lastUpDown = new AtomicInteger(50);
-    private AtomicInteger lastLeftRight = new AtomicInteger(50);
-    private AtomicInteger numTracking = new AtomicInteger(0);
     private void initComponents() {
         imgCameraView = findViewById(R.id.imgCameraView_Connected);
         sebUpDown = findViewById(R.id.sebUpDown_Connected);
@@ -383,6 +306,189 @@ public class ConnectedActivity extends AppCompatActivity {
                 });
             }
         });
+
+        audioTrack = new AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                44100,
+                AudioFormat.CHANNEL_CONFIGURATION_MONO,
+                AudioFormat.ENCODING_PCM_8BIT,
+                8820,
+                AudioTrack.MODE_STREAM);
+    }
+
+    private void connect() {
+        if (projectRoverClient != null && !projectRoverClient.isKilled()) {
+            return;
+        }
+
+        clientConnectorHandler.post(clientConnectorRunnable);
+    }
+
+    private void startClientAudioHandler() {
+        clientAudioHandlerThread = new HandlerThread("Client Audio Handler Thread");
+        clientAudioHandlerThread.start();
+        clientAudioHandler = new Handler(clientAudioHandlerThread.getLooper());
+
+        clientAudioRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (clientAudioPlaybackPcmValueQueue.size() > 0) {
+                    // Only play if we have at least a tenth of a second of audio.
+                    if (clientAudioPlaybackPcmValueQueue.size() >= 4410) {
+                        byte[] playbackBytes;
+                        if (clientAudioPlaybackPcmValueQueue.size() > 4410 * 5) {
+                            System.out.println("Speeding up");
+                            // If we're more than 5 tenths of a second behind, then let's speed it up by
+                            // playing only 9 out of every 10 bytes.
+                            playbackBytes = new byte[3969];
+                            int place = 0;
+                            for (int i = 0; i < 4410; i++) {
+                                byte val = clientAudioPlaybackPcmValueQueue.poll();
+                                if (i % 10 == 0) {
+                                    continue;
+                                }
+                                playbackBytes[place] = val;
+                                place++;
+                            }
+                            if (place != playbackBytes.length) {
+                                throw new IllegalStateException("Place was " + place + " when it should have been " + playbackBytes.length);
+                            }
+                        } else {
+                            System.out.println("Normal speed");
+                            // If we're not falling behind, just play it back normally
+                            playbackBytes = new byte[4410];
+                            for (int i = 0; i < 4410; i++) {
+                                playbackBytes[i] = clientAudioPlaybackPcmValueQueue.poll();
+                            }
+                        }
+                        audioTrack.write(playbackBytes, 0, playbackBytes.length, AudioTrack.WRITE_BLOCKING);
+                    }
+
+                    if (audioTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
+                        audioTrack.play();
+                    }
+                }
+
+                Handler localHandlerRef = clientAudioHandler;
+                if (localHandlerRef != null) {
+                    localHandlerRef.postDelayed(clientAudioRunnable, 1);
+                }
+            }
+        };
+
+        // Kick off the audio playback thread...
+        clientAudioHandler.postDelayed(clientAudioRunnable, 10);
+    }
+
+    private void openClientConnectionHandler() {
+        clientConnectorHandlerThread = new HandlerThread("Client Connector Handler Thread");
+        clientConnectorHandlerThread.start();
+        clientConnectorHandler = new Handler(clientConnectorHandlerThread.getLooper());
+
+        clientConnectorRunnable = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    projectRoverClient = new ProjectRoverClient(host, port);
+                    projectRoverClient.setOnFrameReceivedListener(new OnFrameReceivedListener() {
+                        @Override
+                        public void OnFrameReceived(final Bitmap bitmap) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (imgCameraView != null) {
+                                        imgCameraView.setImageBitmap(bitmap);
+                                    }
+                                }
+                            });
+                        }
+                    });
+                    projectRoverClient.setOnPCMFrameMessageReceivedListener(new OnPCMFrameMessageReceivedListener() {
+                        @Override
+                        public void onPCMFrameMessageReceived(PCMFrameMessage message) {
+                            // Enqueue all PCM values
+                            for (byte b : message.getFrameBytes()) {
+                                clientAudioPlaybackPcmValueQueue.add(b);
+                            }
+                        }
+                    });
+                    projectRoverClient.setOnClientConnectionKilledListener(new OnClientConnectionKilledListener() {
+                        @Override
+                        public void OnClientConnectionKilled() {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(ConnectedActivity.this, "Connection terminated...", Toast.LENGTH_SHORT).show();
+                                    if (clientConnectorHandler != null) {
+                                        clientConnectorHandler.postDelayed(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                connect();
+                                            }
+                                        }, 10000);
+                                    }
+                                }
+                            });
+                        }
+                    });
+                    projectRoverClient.setOnServerStateMessageReceivedListener(new OnServerStateMessageReceivedListener() {
+                        @Override
+                        public void OnServerStateMessageReceived(final ServerStateMessage serverStateMessage) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    StringBuilder sb = new StringBuilder();
+                                    sb.append("Robot Primary Battery: " + serverStateMessage.getPrimaryBatteryLevel() + "%");
+                                    sb.append(System.lineSeparator());
+                                    sb.append("Robot Tablet Battery: " + serverStateMessage.getPhoneBatteryLevel() + "%");
+                                    txtHUDInfo.setText(sb.toString());
+                                }
+                            });
+                        }
+                    });
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(ConnectedActivity.this, "Connected to robot!", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } catch (IOException e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(ConnectedActivity.this, "Failed to connect to robot server! Retrying in 10 seconds...", Toast.LENGTH_SHORT).show();
+
+                            if (clientConnectorHandler != null) {
+                                clientConnectorHandler.postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        connect();
+                                    }
+                                }, 10000);
+                            }
+                        }
+                    });
+                }
+            }
+        };
+    }
+
+    private void closeClientConnectorHandler() {
+        if (clientConnectorHandlerThread != null) {
+            clientConnectorHandlerThread.quitSafely();
+            clientConnectorHandlerThread = null;
+            clientConnectorHandler = null;
+        }
+    }
+
+    private void stopClientAudioHandler() {
+        if (clientAudioHandlerThread != null) {
+            clientAudioHandlerThread.quitSafely();
+            clientAudioHandlerThread = null;
+            clientAudioHandler = null;
+            audioTrack.pause();
+            audioTrack.flush();
+        }
     }
 
     private void sendArmUpdate(boolean force) {

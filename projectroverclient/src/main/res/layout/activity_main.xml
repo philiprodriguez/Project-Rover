@@ -48,7 +48,7 @@
         android:ems="12"
         android:hint="Host (IP or Domain)"
         android:inputType="textPersonName"
-        android:text="192.168.1.178"
+        android:text="192.168.0.147"
         app:layout_constraintEnd_toEndOf="@+id/textView"
         app:layout_constraintStart_toStartOf="@+id/textView"
         app:layout_constraintTop_toBottomOf="@+id/textView" />

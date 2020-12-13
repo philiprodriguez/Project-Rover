@@ -10,3 +10,7 @@
 /build
 /captures
 .externalNativeBuild
+**/build/intermediates
+**/build/generated
+**/build/tmp
+**/build/outputs

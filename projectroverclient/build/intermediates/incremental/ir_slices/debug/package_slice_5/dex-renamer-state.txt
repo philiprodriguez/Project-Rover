@@ -1,4 +1,0 @@
-#Mon Jul 15 11:55:03 EDT 2019
-base.0=/PhilipRoot/General/Programming Projects/ProjectRover/projectroverclient/build/intermediates/transforms/dexMerger/debug/5
-path.0=classes.dex
-renamed.0=classes.dex

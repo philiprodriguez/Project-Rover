@@ -147,6 +147,10 @@ public class ProjectRoverClient {
         }
     }
 
+    public void setOnPCMFrameMessageReceivedListener(OnPCMFrameMessageReceivedListener onPCMFrameMessageReceivedListener) {
+        this.receiverThread.setOnPCMFrameMessageReceivedListener(onPCMFrameMessageReceivedListener);
+    }
+
     public void setOnFrameReceivedListener(OnFrameReceivedListener onFrameReceivedListener) {
         this.receiverThread.setOnFrameReceivedListener(onFrameReceivedListener);
     }
@@ -169,6 +173,10 @@ public class ProjectRoverClient {
 
     public void doEnqueueArmPositionMessage(ArmPositionMessage armPositionMessage) {
         senderThread.enqueueStrict(armPositionMessage);
+    }
+
+    public void doEnqueueAudioFrame(byte[] pcmValues) {
+        senderThread.enqueueDroppable(new PCMFrameMessage(System.currentTimeMillis(), pcmValues));
     }
 
     public ServerSettings getPerceivedServerSettings() {

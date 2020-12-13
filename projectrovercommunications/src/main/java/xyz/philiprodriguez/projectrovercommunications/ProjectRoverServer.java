@@ -20,6 +20,7 @@ public class ProjectRoverServer {
     private volatile OnArmPositionMessageReceivedListener onArmPositionMessageReceivedListener;
     private volatile OnLoggableEventListener onLoggableEventListener;
     private volatile OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener;
+    private volatile OnPCMFrameMessageReceivedListener onPCMFrameMessageReceivedListener;
 
     // This is the container for the server's current client-mutable settings.
     private final ServerSettings serverSettings;
@@ -79,6 +80,7 @@ public class ProjectRoverServer {
                         receiverThread.setOnLoggableEventListener(onLoggableEventListener);
                         receiverThread.setOnMotorStateMessageReceivedListener(onMotorStateMessageReceivedListener);
                         receiverThread.setOnArmPositionMessageReceivedListener(onArmPositionMessageReceivedListener);
+                        receiverThread.setOnPCMFrameMessageReceivedListener(onPCMFrameMessageReceivedListener);
 
                         senderThread = new SenderThread(clientSocket, new OnThreadFinishedListener() {
                             @Override
@@ -178,6 +180,13 @@ public class ProjectRoverServer {
         }
     }
 
+    public synchronized void doEnqueueAudioFrame(byte[] pcmValues) {
+        if (!isKilled() && isClientConnected.get()) {
+            PCMFrameMessage pcmFrameMessage = new PCMFrameMessage(System.currentTimeMillis(), pcmValues);
+            senderThread.enqueueDroppable(pcmFrameMessage);
+        }
+    }
+
     public synchronized void doEnqueueServerStateMessage(ServerStateMessage serverStateMessage) {
         if (!isKilled() && isClientConnected.get()) {
             senderThread.enqueueStrict(serverStateMessage);
@@ -194,6 +203,10 @@ public class ProjectRoverServer {
 
     public synchronized void setOnLoggableEventListener(OnLoggableEventListener onLoggableEventListener) {
         this.onLoggableEventListener = onLoggableEventListener;
+    }
+
+    public synchronized void setOnPCMFrameMessageReceivedListener(OnPCMFrameMessageReceivedListener onPCMFrameMessageReceivedListener) {
+        this.onPCMFrameMessageReceivedListener = onPCMFrameMessageReceivedListener;
     }
 
     public synchronized void setOnServerSettingsMessageReceivedListener(OnServerSettingsMessageReceivedListener onServerSettingsMessageReceivedListener) {

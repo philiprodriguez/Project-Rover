@@ -73,10 +73,6 @@ public class SenderThread extends Thread {
         }
     }
 
-//    public LinkedBlockingQueue<ByteableMessage> getSendQueue() {
-//        return sendQueue;
-//    }
-
     /**
      *  When using this method, the message is guaranteed to eventually be sent unless the socket
      *  closes.

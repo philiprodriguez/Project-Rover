@@ -10,9 +10,11 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
-import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
@@ -80,6 +82,12 @@ public class MainActivity extends AppCompatActivity {
     Handler cameraTimerHandler;
     Runnable cameraTimerRunnable;
 
+    // Audio stuff
+    AudioRecord audioRecord;
+    Handler audioRecordHandler;
+    HandlerThread audioRecordHandlerThread;
+    Runnable audioRecordRunnable;
+
     // State send timer only
     Handler stateSendTimerHandler;
     Runnable stateSendTimerRunnble;
@@ -146,6 +154,16 @@ public class MainActivity extends AppCompatActivity {
             }
         };
         cameraTimerHandler.postDelayed(cameraTimerRunnable, 25);
+
+        audioRecord = new AudioRecord(
+                MediaRecorder.AudioSource.CAMCORDER,
+                44100,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_8BIT,
+                44100);
+        if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+            throw new IllegalStateException("AudioRecord object failed to initialize properly! Check the constructor args?");
+        }
     }
 
     @Override
@@ -185,6 +203,9 @@ public class MainActivity extends AppCompatActivity {
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED) {
             missingPermissions.add(Manifest.permission.BLUETOOTH_ADMIN);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            missingPermissions.add(Manifest.permission.RECORD_AUDIO);
         }
         if (missingPermissions.size() == 0) {
             return true;
@@ -306,6 +327,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void performOnResumeDuties() {
+        startAudioRecordHandler();
+
         openCameraBackgroundHandler();
         if (txvCameraPreview.isAvailable()) {
             if (setupCamera())
@@ -382,9 +405,52 @@ public class MainActivity extends AppCompatActivity {
         startServer();
     }
 
+    private void startAudioRecordHandler() {
+        audioRecordHandlerThread = new HandlerThread("Audio Record Handler Thread");
+        audioRecordHandlerThread.start();
+        audioRecordHandler = new Handler(audioRecordHandlerThread.getLooper());
+
+        audioRecordRunnable = new Runnable() {
+            @Override
+            public void run() {
+                // Our audio frame size is one tenth of one second...
+                byte[] audioFrameBytes = new byte[4410];
+
+                // Make sure we're actually recording!
+                if (audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecord.startRecording();
+                }
+
+                // We can use READ_BLOCKING since we have our own handler / thread here..
+                audioRecord.read(audioFrameBytes, 0, audioFrameBytes.length, AudioRecord.READ_BLOCKING);
+
+                if (projectRoverServer != null) {
+                    projectRoverServer.doEnqueueAudioFrame(audioFrameBytes);
+                }
+
+                Handler localHandlerCopy = audioRecordHandler;
+                if (localHandlerCopy != null) {
+                    audioRecordHandler.postDelayed(audioRecordRunnable, 1);
+                }
+            }
+        };
+        audioRecordHandler.postDelayed(audioRecordRunnable, 1);
+    }
+
+    private void stopAudioRecordHandler() {
+        if (audioRecordHandlerThread != null) {
+            audioRecordHandlerThread.quitSafely();
+            audioRecordHandlerThread = null;
+            audioRecordHandler = null;
+            audioRecord.stop();
+        }
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
+
+        stopAudioRecordHandler();
 
         closeCamera();
         closeCameraBackgroundHandler();
