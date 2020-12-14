@@ -9,6 +9,8 @@ import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
+import android.media.audiofx.LoudnessEnhancer;
+import android.media.audiofx.NoiseSuppressor;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -216,8 +218,8 @@ public class ConnectedActivity extends AppCompatActivity {
             @Override
             public boolean onTouch(View view, MotionEvent motionEvent) {
                 if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
-                    startAudioRecordHandler();
                     stopAudioPlaybackHandler();
+                    startAudioRecordHandler();
                 } else if (motionEvent.getAction() == MotionEvent.ACTION_UP) {
                     stopAudioRecordHandler();
                     startAudioPlaybackHandler();
@@ -349,6 +351,9 @@ public class ConnectedActivity extends AppCompatActivity {
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_8BIT,
                 44100);
+        NoiseSuppressor noiseSuppressorRecord = NoiseSuppressor.create(audioRecord.getAudioSessionId());
+        if (noiseSuppressorRecord != null)
+            noiseSuppressorRecord.setEnabled(true);
         if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
             throw new IllegalStateException("AudioRecord object failed to initialize properly! Check the constructor args?");
         }

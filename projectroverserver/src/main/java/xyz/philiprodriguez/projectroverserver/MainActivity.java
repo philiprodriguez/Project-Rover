@@ -15,6 +15,8 @@ import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
+import android.media.audiofx.LoudnessEnhancer;
+import android.media.audiofx.NoiseSuppressor;
 import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
 import android.os.Handler;
@@ -184,24 +186,6 @@ public class MainActivity extends AppCompatActivity {
             }
         };
         cameraTimerHandler.postDelayed(cameraTimerRunnable, 25);
-
-        audioPlaybackTrack = new AudioTrack(
-                AudioManager.STREAM_MUSIC,
-                44100,
-                AudioFormat.CHANNEL_CONFIGURATION_MONO,
-                AudioFormat.ENCODING_PCM_8BIT,
-                8820,
-                AudioTrack.MODE_STREAM);
-
-        audioRecord = new AudioRecord(
-                MediaRecorder.AudioSource.CAMCORDER,
-                44100,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_8BIT,
-                44100);
-        if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-            throw new IllegalStateException("AudioRecord object failed to initialize properly! Check the constructor args?");
-        }
     }
 
     // Returns true if all the needed permissions are already granted, and false otherwise.
@@ -359,6 +343,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void performOnResumeDuties() {
+        if (audioPlaybackTrack == null) {
+            audioPlaybackTrack = new AudioTrack(
+                    AudioManager.STREAM_MUSIC,
+                    44100,
+                    AudioFormat.CHANNEL_CONFIGURATION_MONO,
+                    AudioFormat.ENCODING_PCM_8BIT,
+                    8820,
+                    AudioTrack.MODE_STREAM);
+        }
+
+        if (audioRecord == null) {
+            audioRecord = new AudioRecord(
+                    MediaRecorder.AudioSource.CAMCORDER,
+                    44100,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_8BIT,
+                    44100);
+            NoiseSuppressor noiseSuppressorRecord = NoiseSuppressor.create(audioRecord.getAudioSessionId());
+            if (noiseSuppressorRecord != null)
+                noiseSuppressorRecord.setEnabled(true);
+            if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                throw new IllegalStateException("AudioRecord object failed to initialize properly! Check the constructor args?");
+            }
+        }
+
         startAudioRecordHandler();
         startAudioPlaybackHandler();
 
@@ -587,28 +596,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean setupCamera() {
         setStatusAndLog("Setting up camera...");
 
-        cameraStateCallback = new CameraDevice.StateCallback() {
-            @Override
-            public void onOpened(@NonNull CameraDevice camera) {
-                setStatusAndLog("Camera device populated!");
-                cameraDevice = camera;
-                createCaptureSession();
-            }
-
-            @Override
-            public void onDisconnected(@NonNull CameraDevice camera) {
-                setStatusAndLog("Camera disconnected! Closing camera...");
-                closeCamera();
-            }
-
-            @Override
-            public void onError(@NonNull CameraDevice camera, int error) {
-                setStatusAndLog("Camera error! Closing camera...");
-                closeCamera();
-            }
-        };
-
-
         cameraManager = (CameraManager) getSystemService(CAMERA_SERVICE);
         try {
             if (cameraManager == null) {
@@ -634,14 +621,40 @@ public class MainActivity extends AppCompatActivity {
 
             // We have a camera with some camera characteristics!
             StreamConfigurationMap streamConfigurationMap = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            Size bestSizeSoFar = null;
             for (Size size : streamConfigurationMap.getOutputSizes(SurfaceTexture.class)) {
-                // Use a 4:3, namely 960x720.
-                if (size.getWidth() * size.getHeight() == 960*720) {
-                    setStatusAndLog("Using camera size of " + size.toString());
-                    cameraSize = size;
+                // Use the largest 4:3 that is smaller than 1920*1080 pixels.
+                if (size.getWidth()*size.getHeight() <= 1920*1080
+                        && Math.abs((size.getWidth()/(double)size.getHeight()) - (4.0/3.0)) <= 0.01
+                        && (bestSizeSoFar == null || bestSizeSoFar.getWidth()*bestSizeSoFar.getHeight() < size.getWidth()*size.getHeight())) {
+                    bestSizeSoFar = size;
                     break;
                 }
             }
+            setStatusAndLog("Using camera size of " + bestSizeSoFar.toString());
+            cameraSize = bestSizeSoFar;
+
+            cameraStateCallback = new CameraDevice.StateCallback() {
+                @Override
+                public void onOpened(@NonNull CameraDevice camera) {
+                    setStatusAndLog("Camera device populated!");
+                    cameraDevice = camera;
+                    createCaptureSession();
+                }
+
+                @Override
+                public void onDisconnected(@NonNull CameraDevice camera) {
+                    setStatusAndLog("Camera disconnected! Closing camera...");
+                    closeCamera();
+                }
+
+                @Override
+                public void onError(@NonNull CameraDevice camera, int error) {
+                    setStatusAndLog("Camera error! Closing camera...");
+                    closeCamera();
+                }
+            };
+
             setStatusAndLog("Camera setup complete!");
             return true;
         } catch (CameraAccessException e) {
