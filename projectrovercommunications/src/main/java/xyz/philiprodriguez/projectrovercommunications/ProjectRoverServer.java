@@ -180,7 +180,7 @@ public class ProjectRoverServer {
         }
     }
 
-    public synchronized void doEnqueueAudioFrame(byte[] pcmValues) {
+    public synchronized void doEnqueueAudioFrame(short[] pcmValues) {
         if (!isKilled() && isClientConnected.get()) {
             PCMFrameMessage pcmFrameMessage = new PCMFrameMessage(System.currentTimeMillis(), pcmValues);
             senderThread.enqueueDroppable(pcmFrameMessage);

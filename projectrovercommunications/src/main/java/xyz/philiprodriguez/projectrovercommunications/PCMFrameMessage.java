@@ -6,24 +6,24 @@ import java.util.Date;
 // Message containing one "frame" of audio 8-bit PCM data
 public class PCMFrameMessage implements ByteableMessage<PCMFrameMessage>{
     private final long timestamp;
-    private final byte[] frameBytes;
+    private final short[] pcmValues;
 
     public PCMFrameMessage() {
         this(-1, null);
     }
 
-    public PCMFrameMessage(long timestamp, byte[] frameBytes) {
+    public PCMFrameMessage(long timestamp, short[] pcmValues) {
         this.timestamp = timestamp;
-        this.frameBytes = frameBytes;
+        this.pcmValues = pcmValues;
     }
 
-    public byte[] getFrameBytes() {
-        return frameBytes;
+    public short[] getPCMValues() {
+        return pcmValues;
     }
 
     @Override
     public byte[] getBytes() {
-        int extraLength = 8 + frameBytes.length;
+        int extraLength = 8 + 2*pcmValues.length;
 
         ByteBuffer byteBuffer = ByteBuffer.allocate(ReceiverThread.START_SEQUENCE.length + 1 + 4 + extraLength);
 
@@ -42,8 +42,8 @@ public class PCMFrameMessage implements ByteableMessage<PCMFrameMessage>{
         byteBuffer.putLong(getTimestamp());
 
         // Frame bytes
-        for (int i = 0; i < frameBytes.length; i++) {
-            byteBuffer.put(frameBytes[i]);
+        for (int i = 0; i < pcmValues.length; i++) {
+            byteBuffer.putShort(pcmValues[i]);
         }
 
         return byteBuffer.array();
@@ -53,11 +53,11 @@ public class PCMFrameMessage implements ByteableMessage<PCMFrameMessage>{
     public PCMFrameMessage fromBytes(byte[] messageBytes) {
         ByteBuffer byteBuffer = ByteBuffer.wrap(messageBytes);
         long timestamp = byteBuffer.getLong();
-        byte[] frameBytes = new byte[messageBytes.length - 8];
-        for (int i = 0; i < frameBytes.length; i++) {
-            frameBytes[i] = byteBuffer.get();
+        short[] pcmValues = new short[(messageBytes.length - 8)/2];
+        for (int i = 0; i < pcmValues.length; i++) {
+            pcmValues[i] = byteBuffer.getShort();
         }
-        return new PCMFrameMessage(timestamp, frameBytes);
+        return new PCMFrameMessage(timestamp, pcmValues);
     }
 
     @Override
@@ -71,6 +71,6 @@ public class PCMFrameMessage implements ByteableMessage<PCMFrameMessage>{
     }
 
     public String toString() {
-        return "PCMFrameMessage of size " + frameBytes.length + " and time " + getTimestamp();
+        return "PCMFrameMessage of size " + pcmValues.length + " and time " + getTimestamp();
     }
 }

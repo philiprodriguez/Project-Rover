@@ -175,7 +175,7 @@ public class ProjectRoverClient {
         senderThread.enqueueStrict(armPositionMessage);
     }
 
-    public void doEnqueueAudioFrame(byte[] pcmValues) {
+    public void doEnqueueAudioFrame(short[] pcmValues) {
         senderThread.enqueueDroppable(new PCMFrameMessage(System.currentTimeMillis(), pcmValues));
     }
 

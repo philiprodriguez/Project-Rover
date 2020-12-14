@@ -97,7 +97,7 @@ public class MainActivity extends AppCompatActivity {
     Runnable audioRecordRunnable;
 
     // Audio stuff for playback of audio from the client
-    final Queue<Byte> audioPlaybackPcmValueQueue = new ConcurrentLinkedQueue<>();
+    final Queue<Short> audioPlaybackPcmValueQueue = new ConcurrentLinkedQueue<>();
     Handler audioPlaybackHandler;
     HandlerThread audioPlaybackHandlerThread;
     Runnable audioPlaybackRunnable;
@@ -303,8 +303,8 @@ public class MainActivity extends AppCompatActivity {
             public void onPCMFrameMessageReceived(PCMFrameMessage message) {
                 // Enqueue all PCM values
                 if (audioPlaybackHandler != null) {
-                    for (byte b : message.getFrameBytes()) {
-                        audioPlaybackPcmValueQueue.add(b);
+                    for (short val : message.getPCMValues()) {
+                        audioPlaybackPcmValueQueue.add(val);
                     }
                 }
             }
@@ -348,7 +348,7 @@ public class MainActivity extends AppCompatActivity {
                     AudioManager.STREAM_MUSIC,
                     44100,
                     AudioFormat.CHANNEL_CONFIGURATION_MONO,
-                    AudioFormat.ENCODING_PCM_8BIT,
+                    AudioFormat.ENCODING_PCM_16BIT,
                     8820,
                     AudioTrack.MODE_STREAM);
         }
@@ -358,7 +358,7 @@ public class MainActivity extends AppCompatActivity {
                     MediaRecorder.AudioSource.CAMCORDER,
                     44100,
                     AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_8BIT,
+                    AudioFormat.ENCODING_PCM_16BIT,
                     44100);
             NoiseSuppressor noiseSuppressorRecord = NoiseSuppressor.create(audioRecord.getAudioSessionId());
             if (noiseSuppressorRecord != null)
@@ -456,7 +456,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 // Our audio frame size is one tenth of one second...
-                byte[] audioFrameBytes = new byte[4410];
+                short[] audioFrameVals = new short[4410];
 
                 // Make sure we're actually recording!
                 if (audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
@@ -464,10 +464,10 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 // We can use READ_BLOCKING since we have our own handler / thread here..
-                audioRecord.read(audioFrameBytes, 0, audioFrameBytes.length, AudioRecord.READ_BLOCKING);
+                audioRecord.read(audioFrameVals, 0, audioFrameVals.length, AudioRecord.READ_BLOCKING);
 
                 if (projectRoverServer != null) {
-                    projectRoverServer.doEnqueueAudioFrame(audioFrameBytes);
+                    projectRoverServer.doEnqueueAudioFrame(audioFrameVals);
                 }
 
                 Handler localHandlerCopy = audioRecordHandler;
@@ -501,32 +501,32 @@ public class MainActivity extends AppCompatActivity {
                 if (audioPlaybackPcmValueQueue.size() > 0) {
                     // Only play if we have at least a tenth of a second of audio.
                     if (audioPlaybackPcmValueQueue.size() >= 4410) {
-                        byte[] playbackBytes;
+                        short[] playbackVals;
                         if (audioPlaybackPcmValueQueue.size() > 4410 * 5) {
                             System.out.println("Speeding up");
                             // If we're more than 5 tenths of a second behind, then let's speed it up by
                             // playing only 9 out of every 10 bytes.
-                            playbackBytes = new byte[3969];
+                            playbackVals = new short[3969];
                             int place = 0;
                             for (int i = 0; i < 4410; i++) {
-                                byte val = audioPlaybackPcmValueQueue.poll();
+                                short val = audioPlaybackPcmValueQueue.poll();
                                 if (i % 10 == 0) {
                                     continue;
                                 }
-                                playbackBytes[place] = val;
+                                playbackVals[place] = val;
                                 place++;
                             }
-                            if (place != playbackBytes.length) {
-                                throw new IllegalStateException("Place was " + place + " when it should have been " + playbackBytes.length);
+                            if (place != playbackVals.length) {
+                                throw new IllegalStateException("Place was " + place + " when it should have been " + playbackVals.length);
                             }
                         } else {
                             // If we're not falling behind, just play it back normally
-                            playbackBytes = new byte[4410];
+                            playbackVals = new short[4410];
                             for (int i = 0; i < 4410; i++) {
-                                playbackBytes[i] = audioPlaybackPcmValueQueue.poll();
+                                playbackVals[i] = audioPlaybackPcmValueQueue.poll();
                             }
                         }
-                        audioPlaybackTrack.write(playbackBytes, 0, playbackBytes.length, AudioTrack.WRITE_BLOCKING);
+                        audioPlaybackTrack.write(playbackVals, 0, playbackVals.length, AudioTrack.WRITE_BLOCKING);
                     }
 
                     if (audioPlaybackTrack.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) {
